@@ -505,6 +505,24 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (msg.type === 'playAgain') {
+      const room = rooms.get(myRoomCode);
+      if (!room || !myPlayerId) return;
+      const player = room.players.get(myPlayerId);
+      if (!player || !player.isHost || room.phase !== 'ended') return;
+      room.phase = 'lobby';
+      room.round = 'main';
+      room.questionIndex = -1;
+      room.answers = new Map();
+      room.ddWagers = new Map();
+      room.ddCompleted = new Map();
+      clearTimeout(room.timer);
+      room.timer = null;
+      for (const p of room.players.values()) p.score = 0;
+      broadcast(myRoomCode, { type: 'backToLobby', players: roomSnapshot(room) });
+      return;
+    }
+
     if (msg.type === 'ddWagerLock') {
       const room = rooms.get(myRoomCode);
       if (!room || !myPlayerId || room.phase !== 'ddWager') return;
