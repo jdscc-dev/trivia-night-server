@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trivia Night — Lobby (WebSocket)</title>
+<title>Trivia Night — Multiplayer Test</title>
 <style>
   :root {
     --bg: #12131a;
@@ -112,12 +112,43 @@
     cursor: pointer;
     text-decoration: underline;
   }
+  .q-progress { color: var(--muted); font-size: 0.85rem; margin-bottom: 4px; }
+  .q-text { font-size: 1.15rem; font-weight: 700; margin: 4px 0 16px; }
+  .choices { display: flex; flex-direction: column; gap: 10px; }
+  .choice-btn {
+    background: #14151d;
+    border: 1px solid var(--border);
+    color: var(--fg);
+    text-align: left;
+    font-weight: 500;
+  }
+  .choice-btn.picked { border-color: var(--accent); background: #26200f; }
+  .choice-btn.correct { border-color: var(--good); background: #142a1c; }
+  .choice-btn.wrong { border-color: var(--bad); background: #2a1414; }
+  .timer-bar-track { height: 6px; background: #14151d; border-radius: 4px; overflow: hidden; margin: 6px 0 14px; }
+  .timer-bar-fill { height: 100%; background: var(--accent); width: 100%; transition: width 0.2s linear; }
+  .answered-count { color: var(--muted); font-size: 0.85rem; margin-top: 12px; text-align: center; }
+  ul.scoreboard { list-style: none; padding: 0; margin: 8px 0 16px; }
+  ul.scoreboard li {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 10px;
+    background: #14151d;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    font-size: 0.92rem;
+  }
+  ul.scoreboard li .score { font-weight: 700; color: var(--accent); }
+  ul.scoreboard li.rank1 .score { color: var(--good); }
+  .reveal-correct-note { font-size: 0.9rem; margin-bottom: 12px; }
+  .reveal-correct-note.me-right { color: var(--good); }
+  .reveal-correct-note.me-wrong { color: var(--bad); }
 </style>
 </head>
 <body>
 
-  <h1>Trivia Night &mdash; Lobby (WebSocket)</h1>
-  <p class="sub">Own server, own protocol &mdash; no Firebase. Proves rooms sync across devices/accounts.</p>
+  <h1>Trivia Night &mdash; Multiplayer Test</h1>
+  <p class="sub">Own server, own protocol. Proves questions/answers/scoring sync live across devices.</p>
 
   <div class="card">
     <div class="status-line"><span class="dot" id="connDot"></span><span id="connStatus">Connecting&hellip;</span></div>
@@ -142,7 +173,33 @@
     <div class="room-code-display" id="roomCodeDisplay">----</div>
     <strong>Players in this room:</strong>
     <ul class="players" id="playerList"><li class="empty">Nobody yet.</li></ul>
+    <button id="startGameBtn" style="display:none; margin-top:14px;">Start Game</button>
+    <p class="sub" id="waitingForHostNote" style="display:none; margin-top:14px; margin-bottom:0;">Waiting for the host to start the game&hellip;</p>
     <span class="leave-link" id="leaveLink">Leave this room</span>
+  </div>
+
+  <div class="card" id="questionCard" style="display:none;">
+    <div class="q-progress" id="qProgress">Question 1 of 4</div>
+    <div class="timer-bar-track"><div class="timer-bar-fill" id="timerBarFill"></div></div>
+    <div class="q-text" id="qText">Question text</div>
+    <div class="choices" id="choicesList"></div>
+    <div class="answered-count" id="answeredCountText"></div>
+  </div>
+
+  <div class="card" id="revealCard" style="display:none;">
+    <div class="q-progress" id="revealProgress">Question 1 of 4</div>
+    <div class="q-text" id="revealQText">Question text</div>
+    <div class="reveal-correct-note" id="revealNote"></div>
+    <div class="choices" id="revealChoicesList"></div>
+    <strong style="display:block; margin: 16px 0 8px;">Scoreboard:</strong>
+    <ul class="scoreboard" id="scoreboardList"></ul>
+    <button id="nextQuestionBtn" style="display:none;">Next Question</button>
+    <p class="sub" id="waitingForHostReveal" style="display:none; margin-bottom:0;">Waiting for the host to continue&hellip;</p>
+  </div>
+
+  <div class="card" id="endedCard" style="display:none;">
+    <h2>Final Scores</h2>
+    <ul class="scoreboard" id="finalScoreboardList"></ul>
   </div>
 
 <script>
@@ -163,6 +220,27 @@
   const codeInput = document.getElementById('codeInput');
   const joinBtn = document.getElementById('joinBtn');
   const leaveLink = document.getElementById('leaveLink');
+  const startGameBtn = document.getElementById('startGameBtn');
+  const waitingForHostNote = document.getElementById('waitingForHostNote');
+
+  const questionCard = document.getElementById('questionCard');
+  const qProgress = document.getElementById('qProgress');
+  const qText = document.getElementById('qText');
+  const choicesList = document.getElementById('choicesList');
+  const timerBarFill = document.getElementById('timerBarFill');
+  const answeredCountText = document.getElementById('answeredCountText');
+
+  const revealCard = document.getElementById('revealCard');
+  const revealProgress = document.getElementById('revealProgress');
+  const revealQText = document.getElementById('revealQText');
+  const revealNote = document.getElementById('revealNote');
+  const revealChoicesList = document.getElementById('revealChoicesList');
+  const scoreboardList = document.getElementById('scoreboardList');
+  const nextQuestionBtn = document.getElementById('nextQuestionBtn');
+  const waitingForHostReveal = document.getElementById('waitingForHostReveal');
+
+  const endedCard = document.getElementById('endedCard');
+  const finalScoreboardList = document.getElementById('finalScoreboardList');
 
   function setConn(state, text) {
     connDot.className = 'dot ' + (state || '');
@@ -170,14 +248,23 @@
   }
   function setAction(state, text) {
     actionDot.className = 'dot ' + (state || '');
-    actionStatus.textContent = text || ' ';
+    actionStatus.textContent = text || ' ';
+  }
+  function showOnly(card) {
+    [chooseCard, roomCard, questionCard, revealCard, endedCard].forEach((c) => {
+      c.style.display = c === card ? 'block' : 'none';
+    });
   }
 
   let ws = null;
   let myPlayerId = null;
   let myRoomCode = null;
+  let iAmHost = false;
   let reconnectDelay = 1000;
   let intentionalClose = false;
+  let currentChoices = [];
+  let myAnswer = null;
+  let timerInterval = null;
 
   function wsUrl() {
     const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
@@ -222,19 +309,56 @@
       if (msg.type === 'room') {
         myPlayerId = msg.playerId;
         myRoomCode = msg.code;
+        iAmHost = !!msg.isHost;
         localStorage.setItem('triviaLast', JSON.stringify({ code: msg.code, playerId: msg.playerId }));
         setAction('ok', 'Ready.');
-        chooseCard.style.display = 'none';
-        roomCard.style.display = 'block';
         roomHeading.textContent = msg.isHost ? 'Hosting room' : 'Joined room';
         roomCodeDisplay.textContent = msg.code;
         renderPlayers(msg.players);
+        startGameBtn.style.display = iAmHost ? 'block' : 'none';
+        waitingForHostNote.style.display = iAmHost ? 'none' : 'block';
+
+        if (msg.phase === 'question' && msg.question) {
+          myAnswer = msg.alreadyAnswered ? -2 : null; // -2 = answered before reload, choice unknown
+          renderQuestion(msg.question);
+          showOnly(questionCard);
+        } else if (msg.phase === 'reveal') {
+          showOnly(roomCard); // will be replaced on next reveal broadcast if we catch one; safe fallback
+        } else if (msg.phase === 'ended') {
+          showOnly(endedCard);
+        } else {
+          showOnly(roomCard);
+        }
         return;
       }
 
       if (msg.type === 'players') {
         if (msg.code !== myRoomCode) return;
         renderPlayers(msg.players);
+        return;
+      }
+
+      if (msg.type === 'question') {
+        myAnswer = null;
+        renderQuestion(msg);
+        showOnly(questionCard);
+        return;
+      }
+
+      if (msg.type === 'answerCount') {
+        answeredCountText.textContent = msg.answeredCount + ' of ' + msg.playerCount + ' answered';
+        return;
+      }
+
+      if (msg.type === 'reveal') {
+        renderReveal(msg);
+        showOnly(revealCard);
+        return;
+      }
+
+      if (msg.type === 'ended') {
+        renderFinal(msg.players);
+        showOnly(endedCard);
         return;
       }
 
@@ -257,7 +381,8 @@
       const hostTag = p.isHost ? ' (host)' : '';
       const offline = p.connected ? '' : ' offline';
       const status = p.connected ? '' : ' — reconnecting…';
-      return '<li class="' + offline.trim() + '"><span>' + escapeHtml(p.name) + hostTag + status + '</span>' + mine + '</li>';
+      const scoreTxt = typeof p.score === 'number' ? ' &middot; ' + p.score + ' pt' + (p.score === 1 ? '' : 's') : '';
+      return '<li class="' + offline.trim() + '"><span>' + escapeHtml(p.name) + hostTag + scoreTxt + status + '</span>' + mine + '</li>';
     }).join('');
   }
 
@@ -269,6 +394,86 @@
 
   function nameOrFallback() {
     return (nameInput.value || '').trim().slice(0, 20) || 'Player';
+  }
+
+  // --- Question phase ---
+  function renderQuestion(q) {
+    currentChoices = q.choices;
+    qProgress.textContent = 'Question ' + (q.index + 1) + ' of ' + q.total;
+    qText.textContent = q.q;
+    answeredCountText.textContent = '';
+    choicesList.innerHTML = q.choices.map((c, i) =>
+      '<button class="choice-btn" data-i="' + i + '">' + escapeHtml(c) + '</button>'
+    ).join('');
+    Array.from(choicesList.querySelectorAll('.choice-btn')).forEach((btn) => {
+      btn.addEventListener('click', () => submitAnswer(Number(btn.dataset.i)));
+    });
+
+    clearInterval(timerInterval);
+    const start = Date.now();
+    const duration = q.timeMs;
+    timerBarFill.style.width = '100%';
+    timerInterval = setInterval(() => {
+      const pct = Math.max(0, 100 - ((Date.now() - start) / duration) * 100);
+      timerBarFill.style.width = pct + '%';
+      if (pct <= 0) clearInterval(timerInterval);
+    }, 100);
+  }
+
+  function submitAnswer(choice) {
+    if (myAnswer !== null) return;
+    myAnswer = choice;
+    Array.from(choicesList.querySelectorAll('.choice-btn')).forEach((btn) => {
+      btn.disabled = true;
+      if (Number(btn.dataset.i) === choice) btn.classList.add('picked');
+    });
+    ws.send(JSON.stringify({ type: 'answer', choice }));
+  }
+
+  // --- Reveal phase ---
+  function renderReveal(msg) {
+    clearInterval(timerInterval);
+    const q = { index: msg.index }; // total unknown here; reuse progress text loosely
+    revealProgress.textContent = 'Question ' + (msg.index + 1);
+    revealQText.textContent = qText.textContent;
+
+    revealChoicesList.innerHTML = currentChoices.map((c, i) => {
+      let cls = 'choice-btn';
+      if (i === msg.correct) cls += ' correct';
+      else if (myAnswer === i) cls += ' wrong';
+      return '<div class="' + cls + '" style="padding:10px 16px; border-radius:8px;">' + escapeHtml(c) + '</div>';
+    }).join('');
+
+    if (myAnswer === -2) {
+      revealNote.textContent = '';
+    } else if (myAnswer === msg.correct) {
+      revealNote.textContent = 'You got it right!';
+      revealNote.className = 'reveal-correct-note me-right';
+    } else if (myAnswer === null) {
+      revealNote.textContent = "Time's up — you didn't answer in time.";
+      revealNote.className = 'reveal-correct-note me-wrong';
+    } else {
+      revealNote.textContent = 'Not quite — the correct answer is highlighted.';
+      revealNote.className = 'reveal-correct-note me-wrong';
+    }
+
+    renderScoreboard(scoreboardList, msg.players);
+
+    nextQuestionBtn.style.display = iAmHost ? 'block' : 'none';
+    waitingForHostReveal.style.display = iAmHost ? 'none' : 'block';
+    nextQuestionBtn.textContent = msg.isLast ? 'See Final Scores' : 'Next Question';
+  }
+
+  function renderScoreboard(el, players) {
+    const sorted = players.slice().sort((a, b) => b.score - a.score);
+    el.innerHTML = sorted.map((p, i) => {
+      const mine = p.id === myPlayerId ? ' (you)' : '';
+      return '<li class="' + (i === 0 ? 'rank1' : '') + '"><span>' + escapeHtml(p.name) + mine + '</span><span class="score">' + p.score + '</span></li>';
+    }).join('');
+  }
+
+  function renderFinal(players) {
+    renderScoreboard(finalScoreboardList, players);
   }
 
   hostBtn.addEventListener('click', () => {
@@ -301,9 +506,22 @@
     localStorage.removeItem('triviaLast');
     myPlayerId = null;
     myRoomCode = null;
-    roomCard.style.display = 'none';
-    chooseCard.style.display = 'block';
-    setAction('', ' ');
+    showOnly(chooseCard);
+    setAction('', ' ');
+  });
+
+  startGameBtn.addEventListener('click', () => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    startGameBtn.disabled = true;
+    ws.send(JSON.stringify({ type: 'startGame' }));
+    setTimeout(() => { startGameBtn.disabled = false; }, 1500);
+  });
+
+  nextQuestionBtn.addEventListener('click', () => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    nextQuestionBtn.disabled = true;
+    ws.send(JSON.stringify({ type: 'nextQuestion' }));
+    setTimeout(() => { nextQuestionBtn.disabled = false; }, 1500);
   });
 
   connect();
