@@ -233,6 +233,21 @@
     z-index: 2;
   }
   #wheelCatLabel { min-height: 1.4em; font-weight: 800; font-size: 1.1rem; color: var(--accent); margin-top: 2px; }
+
+  /* ---- Daily Double ---- */
+  .dd-chips { display: flex; gap: 10px; margin: 4px 0 14px; }
+  .dd-chip {
+    flex: 1;
+    background: #14151d;
+    border: 1px solid var(--border);
+    color: var(--fg);
+    text-align: center;
+    font-weight: 600;
+    padding: 12px 6px;
+    font-size: 0.85rem;
+  }
+  .dd-chip-label { display: block; font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
+  .dd-chip.selected { border-color: var(--accent); background: #26200f; color: var(--accent); }
 </style>
 </head>
 <body>
@@ -322,6 +337,32 @@
     <p class="sub" id="waitingForHostReveal" style="display:none; margin-bottom:0;">Waiting for the host to continue&hellip;</p>
   </div>
 
+  <div class="card" id="ddWagerCard" style="display:none;">
+    <h2>💰 Daily Double!</h2>
+    <p class="sub" id="ddWagerSub">Wager before you see the question.</p>
+    <div class="dd-chips" id="ddChips"></div>
+    <button id="ddLockWagerBtn">Lock in Wager</button>
+  </div>
+
+  <div class="card" id="ddQuestionCard" style="display:none;">
+    <div class="q-category" id="ddWagerShown"></div>
+    <div class="q-text" id="ddQText">Question text</div>
+    <div class="choices" id="ddChoicesList"></div>
+    <div class="answered-count" id="ddPersonalFeedback"></div>
+  </div>
+
+  <div class="card" id="ddRevealCard" style="display:none;">
+    <div class="q-progress" id="ddRevealProgress">Daily Double 1 of 2</div>
+    <div class="q-text" id="ddRevealQText">Question text</div>
+    <div class="choices" id="ddRevealChoicesList"></div>
+    <strong style="display:block; margin: 16px 0 8px;">Results:</strong>
+    <ul class="scoreboard" id="ddResultsList"></ul>
+    <strong style="display:block; margin: 16px 0 8px;">Scoreboard:</strong>
+    <ul class="scoreboard" id="ddScoreboardList"></ul>
+    <button id="ddNextBtn" style="display:none;">Next Daily Double</button>
+    <p class="sub" id="ddWaitingForHost" style="display:none; margin-bottom:0;">Waiting for the host to continue&hellip;</p>
+  </div>
+
   <div class="card" id="endedCard" style="display:none;">
     <h2>Final Scores</h2>
     <ul class="scoreboard" id="finalScoreboardList"></ul>
@@ -375,6 +416,26 @@
   const nextQuestionBtn = document.getElementById('nextQuestionBtn');
   const waitingForHostReveal = document.getElementById('waitingForHostReveal');
 
+  const ddWagerCard = document.getElementById('ddWagerCard');
+  const ddWagerSub = document.getElementById('ddWagerSub');
+  const ddChips = document.getElementById('ddChips');
+  const ddLockWagerBtn = document.getElementById('ddLockWagerBtn');
+
+  const ddQuestionCard = document.getElementById('ddQuestionCard');
+  const ddWagerShown = document.getElementById('ddWagerShown');
+  const ddQText = document.getElementById('ddQText');
+  const ddChoicesList = document.getElementById('ddChoicesList');
+  const ddPersonalFeedback = document.getElementById('ddPersonalFeedback');
+
+  const ddRevealCard = document.getElementById('ddRevealCard');
+  const ddRevealProgress = document.getElementById('ddRevealProgress');
+  const ddRevealQText = document.getElementById('ddRevealQText');
+  const ddRevealChoicesList = document.getElementById('ddRevealChoicesList');
+  const ddResultsList = document.getElementById('ddResultsList');
+  const ddScoreboardList = document.getElementById('ddScoreboardList');
+  const ddNextBtn = document.getElementById('ddNextBtn');
+  const ddWaitingForHost = document.getElementById('ddWaitingForHost');
+
   const endedCard = document.getElementById('endedCard');
   const finalScoreboardList = document.getElementById('finalScoreboardList');
 
@@ -387,7 +448,7 @@
     actionStatus.textContent = text || ' ';
   }
   function showOnly(card) {
-    [chooseCard, roomCard, wheelCard, roundIntroCard, questionCard, revealCard, endedCard].forEach((c) => {
+    [chooseCard, roomCard, wheelCard, roundIntroCard, questionCard, revealCard, ddWagerCard, ddQuestionCard, ddRevealCard, endedCard].forEach((c) => {
       c.style.display = c === card ? 'block' : 'none';
     });
   }
@@ -475,6 +536,8 @@
   let currentChoices = [];
   let myAnswer = null;
   let timerInterval = null;
+  let myWagerChoice = null;
+  let myDdAnswer = null;
 
   function wsUrl() {
     const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
@@ -576,6 +639,29 @@
       if (msg.type === 'reveal') {
         renderReveal(msg);
         showOnly(revealCard);
+        return;
+      }
+
+      if (msg.type === 'ddWager') {
+        renderDdWager(msg);
+        showOnly(ddWagerCard);
+        return;
+      }
+
+      if (msg.type === 'ddQuestion') {
+        renderDdQuestion(msg);
+        showOnly(ddQuestionCard);
+        return;
+      }
+
+      if (msg.type === 'ddPersonalResult') {
+        renderDdPersonalResult(msg);
+        return; // stay on ddQuestionCard until the room-wide ddRoundReveal arrives
+      }
+
+      if (msg.type === 'ddRoundReveal') {
+        renderDdRoundReveal(msg);
+        showOnly(ddRevealCard);
         return;
       }
 
@@ -701,6 +787,86 @@
     renderScoreboard(finalScoreboardList, players);
   }
 
+  // --- Daily Double: wager phase ---
+  function renderDdWager(msg) {
+    myWagerChoice = msg.options[0].amount;
+    ddWagerSub.textContent = 'Wager before you see the question. (Daily Double ' + (msg.index + 1) + ' of ' + msg.total + ')';
+    ddChips.innerHTML = msg.options.map((o, i) =>
+      '<button type="button" class="dd-chip' + (i === 0 ? ' selected' : '') + '" data-amt="' + o.amount + '"><span class="dd-chip-label">' + escapeHtml(o.label) + '</span>' + o.amount + ' pts</button>'
+    ).join('');
+    Array.from(ddChips.querySelectorAll('.dd-chip')).forEach((btn) => {
+      btn.addEventListener('click', () => {
+        ddChips.querySelectorAll('.dd-chip').forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        myWagerChoice = Number(btn.dataset.amt);
+      });
+    });
+    ddLockWagerBtn.disabled = false;
+  }
+
+  // --- Daily Double: question phase (only shown after wagering) ---
+  function renderDdQuestion(msg) {
+    myDdAnswer = null;
+    ddWagerShown.textContent = 'Wagering ' + msg.wager + ' pts';
+    ddQText.textContent = msg.q;
+    ddPersonalFeedback.textContent = '';
+    ddChoicesList.innerHTML = msg.choices.map((c, i) =>
+      '<button class="choice-btn" data-i="' + i + '">' + escapeHtml(c) + '</button>'
+    ).join('');
+    Array.from(ddChoicesList.querySelectorAll('.choice-btn')).forEach((btn) => {
+      btn.addEventListener('click', () => submitDdAnswer(Number(btn.dataset.i)));
+    });
+  }
+
+  function submitDdAnswer(choice) {
+    if (myDdAnswer !== null) return;
+    myDdAnswer = choice;
+    Array.from(ddChoicesList.querySelectorAll('.choice-btn')).forEach((btn) => {
+      btn.disabled = true;
+      if (Number(btn.dataset.i) === choice) btn.classList.add('picked');
+    });
+    ws.send(JSON.stringify({ type: 'ddAnswer', choice }));
+  }
+
+  // --- Daily Double: personal result (arrives right after answering — the
+  // room-wide reveal only happens once everyone else is done too) ---
+  function renderDdPersonalResult(msg) {
+    Array.from(ddChoicesList.querySelectorAll('.choice-btn')).forEach((btn) => {
+      const i = Number(btn.dataset.i);
+      if (i === msg.correctIndex) btn.classList.add('correct');
+      else if (i === myDdAnswer) btn.classList.add('wrong');
+    });
+    ddPersonalFeedback.textContent = (msg.correct
+      ? 'Correct! +' + msg.amount + ' points.'
+      : 'Not quite — lost ' + msg.amount + ' points.') + ' Waiting for other players…';
+  }
+
+  // --- Daily Double: shared round reveal (everyone's wager + result) ---
+  function renderDdRoundReveal(msg) {
+    ddRevealProgress.textContent = 'Daily Double ' + (msg.index + 1) + ' of ' + msg.total;
+    ddRevealQText.textContent = msg.q;
+    ddRevealChoicesList.innerHTML = msg.choices.map((c, i) => {
+      const cls = i === msg.correctIndex ? 'choice-btn correct' : 'choice-btn';
+      return '<div class="' + cls + '" style="padding:10px 16px; border-radius:8px;">' + escapeHtml(c) + '</div>';
+    }).join('');
+    renderDdResults(ddResultsList, msg.results);
+    renderScoreboard(ddScoreboardList, msg.players);
+    ddNextBtn.style.display = iAmHost ? 'block' : 'none';
+    ddWaitingForHost.style.display = iAmHost ? 'none' : 'block';
+    ddNextBtn.textContent = msg.nextLabel || 'Next Daily Double';
+  }
+
+  function renderDdResults(el, results) {
+    el.innerHTML = results.map((r) => {
+      const mine = r.id === myPlayerId ? ' (you)' : '';
+      let outcome;
+      if (!r.answered) outcome = '<span style="color:var(--muted);">no answer</span>';
+      else if (r.correct) outcome = '<span style="color:var(--good); font-weight:700;">+' + r.wager + '</span>';
+      else outcome = '<span style="color:var(--bad); font-weight:700;">-' + r.wager + '</span>';
+      return '<li><span>' + escapeHtml(r.name) + mine + '</span><span>' + outcome + '</span></li>';
+    }).join('');
+  }
+
   hostBtn.addEventListener('click', () => {
     if (ws.readyState !== WebSocket.OPEN) return;
     hostBtn.disabled = true;
@@ -747,6 +913,19 @@
     nextQuestionBtn.disabled = true;
     ws.send(JSON.stringify({ type: 'nextQuestion' }));
     setTimeout(() => { nextQuestionBtn.disabled = false; }, 1500);
+  });
+
+  ddLockWagerBtn.addEventListener('click', () => {
+    if (ws.readyState !== WebSocket.OPEN || myWagerChoice === null) return;
+    ddLockWagerBtn.disabled = true;
+    ws.send(JSON.stringify({ type: 'ddWagerLock', amount: myWagerChoice }));
+  });
+
+  ddNextBtn.addEventListener('click', () => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    ddNextBtn.disabled = true;
+    ws.send(JSON.stringify({ type: 'nextQuestion' }));
+    setTimeout(() => { ddNextBtn.disabled = false; }, 1500);
   });
 
   connect();

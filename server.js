@@ -48,6 +48,24 @@ const LIGHTNING_ITEMS = [
   { s: 'Honey never spoils.', truth: true },
 ];
 
+// Daily Double, ported from the single-device build's DAILY_DOUBLES set.
+// Unlike the original (one spotlighted contestant), every player plays their
+// own Daily Double at the same time: each wagers off their own score, then
+// answers — win the wager or lose it, independent of everyone else.
+const DAILY_DOUBLE_ITEMS = [
+  { q: 'This artist painted the ceiling of the Sistine Chapel.', choices: ['Leonardo da Vinci', 'Michelangelo', 'Raphael', 'Donatello'], correct: 1 },
+  { q: 'Which planet has the most known moons in our solar system?', choices: ['Jupiter', 'Saturn', 'Uranus', 'Neptune'], correct: 1 },
+];
+
+// TEST MODE: trims each round down to a handful of questions so a full
+// playthrough only takes a couple minutes instead of the full game length —
+// useful while we're testing new rounds across devices. Nothing is deleted;
+// this just slices the (already-shuffled) full sets shorter at game start.
+// Flip TEST_MODE to false (or delete this block's usage below) to go back
+// to a full-length game once everything's deployed and confirmed working.
+const TEST_MODE = true;
+const TEST_LIMITS = { main: 3, lightning: 3, dailyDouble: 1 };
+
 const QUESTION_TIME_MS = 18000; // matches the original build's MAIN_TIME (18s)
 const LIGHTNING_TIME_MS = 4000; // matches the original build's LIGHTNING_TIME (4s)
 
@@ -85,15 +103,32 @@ function buildLightningSet() {
   }));
 }
 
+// Same three wager tiers as the original build, computed from a player's
+// own current score (so "All in" always means something, even at 0 points).
+function wagerOptions(score) {
+  const safe = Math.max(50, Math.round((score * 0.25) / 10) * 10);
+  const bold = Math.max(100, Math.round((score * 0.5) / 10) * 10);
+  const allIn = Math.max(150, score || 150);
+  return [
+    { label: 'Safe', amount: safe },
+    { label: 'Bold', amount: bold },
+    { label: 'All in', amount: allIn },
+  ];
+}
+
 // In-memory room state.
 // code -> {
 //   players: Map(playerId -> { id, name, isHost, ws, score }),
-//   phase: 'lobby' | 'wheel' | 'question' | 'reveal' | 'roundIntro' | 'ended',
-//   round: 'main' | 'lightning'  (which set questionIndex currently indexes into)
+//   phase: 'lobby' | 'wheel' | 'question' | 'reveal' | 'roundIntro'
+//          | 'ddWager' | 'ddRoundReveal' | 'ended',
+//   round: 'main' | 'lightning' | 'dailyDouble'  (which set questionIndex indexes into)
 //   mainSet: [question, ...]  (this room's shuffled order, set at startGame)
 //   lightningSet: [question, ...]  (same shape as mainSet, set at startGame)
+//   dailyDoubleSet: [question, ...]  (same shape, set at startGame)
 //   questionIndex: number,
-//   answers: Map(playerId -> choiceIndex),
+//   answers: Map(playerId -> choiceIndex),               // main/lightning rounds
+//   ddWagers: Map(playerId -> amount)                     // current Daily Double item
+//   ddCompleted: Map(playerId -> { correct, amount })     // current Daily Double item
 //   timer: Timeout | null,
 // }
 const rooms = new Map();
@@ -222,7 +257,7 @@ function revealAnswer(code) {
   const isLastInRound = room.questionIndex >= set.length - 1;
   const nextLabel = room.round === 'main'
     ? (isLastInRound ? 'Start Lightning Round' : 'Next Question')
-    : (isLastInRound ? 'See Final Scores' : 'Next Question');
+    : (isLastInRound ? 'Start Daily Double' : 'Next Question');
 
   broadcast(code, {
     type: 'reveal',
@@ -232,6 +267,71 @@ function revealAnswer(code) {
     answers: answerMap,
     players: roomSnapshot(room),
     nextLabel,
+  });
+}
+
+// One-time title card before the Daily Double round begins.
+function startDailyDoubleRoundIntro(code) {
+  const room = rooms.get(code);
+  if (!room) return;
+  room.round = 'dailyDouble';
+  room.phase = 'roundIntro';
+  broadcast(code, {
+    type: 'roundIntro',
+    title: 'DAILY DOUBLE',
+    subtitle: 'Wager your own points — before you see the question.',
+  });
+  clearTimeout(room.timer);
+  room.timer = setTimeout(() => startDailyDoubleItem(code, 0), ROUND_INTRO_MS);
+}
+
+// Daily Double is untimed and personal: every player wagers off their own
+// score and answers at their own pace, rather than everyone racing a shared
+// clock. The question itself is only revealed to a player once THEY lock in
+// a wager — that's the whole point of the format.
+function startDailyDoubleItem(code, index) {
+  const room = rooms.get(code);
+  if (!room) return;
+  room.phase = 'ddWager';
+  room.questionIndex = index;
+  room.ddWagers = new Map();
+  room.ddCompleted = new Map();
+  clearTimeout(room.timer);
+  for (const p of room.players.values()) {
+    send(p.ws, { type: 'ddWager', index, total: room.dailyDoubleSet.length, options: wagerOptions(p.score) });
+  }
+}
+
+// Checks whether every currently-connected player has finished (wagered and
+// answered) the active Daily Double item, and reveals the shared results
+// once they have. Only connected players count, so someone who dropped
+// mid-round never blocks the rest of the table forever.
+function maybeRevealDailyDouble(code) {
+  const room = rooms.get(code);
+  if (!room || room.phase !== 'ddWager') return;
+  const connected = Array.from(room.players.values()).filter((p) => p.ws);
+  if (!connected.length) return;
+  const allDone = connected.every((p) => room.ddCompleted.has(p.id));
+  if (!allDone) return;
+
+  clearTimeout(room.timer);
+  room.phase = 'ddRoundReveal';
+  const item = room.dailyDoubleSet[room.questionIndex];
+  const results = Array.from(room.players.values()).map((p) => {
+    const r = room.ddCompleted.get(p.id);
+    return { id: p.id, name: p.name, wager: r ? r.amount : 0, correct: r ? r.correct : null, answered: !!r };
+  });
+  const isLastInRound = room.questionIndex >= room.dailyDoubleSet.length - 1;
+  broadcast(code, {
+    type: 'ddRoundReveal',
+    index: room.questionIndex,
+    total: room.dailyDoubleSet.length,
+    q: item.q,
+    choices: item.choices,
+    correctIndex: item.correct,
+    results,
+    players: roomSnapshot(room),
+    nextLabel: isLastInRound ? 'See Final Scores' : 'Next Daily Double',
   });
 }
 
@@ -251,7 +351,19 @@ wss.on('connection', (ws) => {
       const name = String(msg.name || 'Player').slice(0, 20) || 'Player';
       const code = genCode();
       const playerId = genPlayerId();
-      const room = { players: new Map(), phase: 'lobby', round: 'main', mainSet: [], lightningSet: [], questionIndex: -1, answers: new Map(), timer: null };
+      const room = {
+        players: new Map(),
+        phase: 'lobby',
+        round: 'main',
+        mainSet: [],
+        lightningSet: [],
+        dailyDoubleSet: [],
+        questionIndex: -1,
+        answers: new Map(),
+        ddWagers: new Map(),
+        ddCompleted: new Map(),
+        timer: null,
+      };
       room.players.set(playerId, { id: playerId, name, isHost: true, ws, score: 0 });
       rooms.set(code, room);
       myRoomCode = code;
@@ -308,6 +420,18 @@ wss.on('connection', (ws) => {
         alreadyAnswered: room.answers.has(playerId),
       });
       broadcastPlayers(code);
+      // Daily Double gates on every connected player finishing their turn —
+      // if a reconnecting player never gets back their wager/question step,
+      // the whole round hangs forever with no way for the host to force it
+      // along. Re-send whatever step they were on so they can finish it.
+      if (room.phase === 'ddWager' && !room.ddCompleted.has(playerId)) {
+        if (room.ddWagers.has(playerId)) {
+          const item = room.dailyDoubleSet[room.questionIndex];
+          send(ws, { type: 'ddQuestion', q: item.q, choices: item.choices, wager: room.ddWagers.get(playerId) });
+        } else {
+          send(ws, { type: 'ddWager', index: room.questionIndex, total: room.dailyDoubleSet.length, options: wagerOptions(player.score) });
+        }
+      }
       return;
     }
 
@@ -319,6 +443,12 @@ wss.on('connection', (ws) => {
       room.round = 'main';
       room.mainSet = shuffle(MAIN_QUESTIONS);
       room.lightningSet = buildLightningSet();
+      room.dailyDoubleSet = shuffle(DAILY_DOUBLE_ITEMS);
+      if (TEST_MODE) {
+        room.mainSet = room.mainSet.slice(0, TEST_LIMITS.main);
+        room.lightningSet = room.lightningSet.slice(0, TEST_LIMITS.lightning);
+        room.dailyDoubleSet = room.dailyDoubleSet.slice(0, TEST_LIMITS.dailyDouble);
+      }
       startWheel(myRoomCode, 0);
       return;
     }
@@ -347,23 +477,65 @@ wss.on('connection', (ws) => {
       const room = rooms.get(myRoomCode);
       if (!room || !myPlayerId) return;
       const player = room.players.get(myPlayerId);
-      if (!player || !player.isHost || room.phase !== 'reveal') return;
+      if (!player || !player.isHost) return;
+      if (room.phase !== 'reveal' && room.phase !== 'ddRoundReveal') return;
       const next = room.questionIndex + 1;
+
       if (room.round === 'main') {
         if (next >= room.mainSet.length) {
           startLightningRound(myRoomCode);
         } else {
           startWheel(myRoomCode, next);
         }
-      } else {
+      } else if (room.round === 'lightning') {
         if (next >= room.lightningSet.length) {
+          startDailyDoubleRoundIntro(myRoomCode);
+        } else {
+          startQuestion(myRoomCode, next);
+        }
+      } else if (room.round === 'dailyDouble') {
+        if (next >= room.dailyDoubleSet.length) {
           room.phase = 'ended';
           clearTimeout(room.timer);
           broadcast(myRoomCode, { type: 'ended', players: roomSnapshot(room) });
         } else {
-          startQuestion(myRoomCode, next);
+          startDailyDoubleItem(myRoomCode, next);
         }
       }
+      return;
+    }
+
+    if (msg.type === 'ddWagerLock') {
+      const room = rooms.get(myRoomCode);
+      if (!room || !myPlayerId || room.phase !== 'ddWager') return;
+      const player = room.players.get(myPlayerId);
+      if (!player || room.ddWagers.has(myPlayerId)) return;
+      const valid = wagerOptions(player.score).map((o) => o.amount);
+      const amount = Number(msg.amount);
+      if (!valid.includes(amount)) return;
+      room.ddWagers.set(myPlayerId, amount);
+      const item = room.dailyDoubleSet[room.questionIndex];
+      send(ws, { type: 'ddQuestion', q: item.q, choices: item.choices, wager: amount });
+      return;
+    }
+
+    if (msg.type === 'ddAnswer') {
+      const room = rooms.get(myRoomCode);
+      if (!room || !myPlayerId || room.phase !== 'ddWager') return;
+      if (!room.ddWagers.has(myPlayerId) || room.ddCompleted.has(myPlayerId)) return;
+      const player = room.players.get(myPlayerId);
+      if (!player) return;
+      const item = room.dailyDoubleSet[room.questionIndex];
+      const choice = Number(msg.choice);
+      if (!Number.isInteger(choice) || choice < 0 || choice >= item.choices.length) return;
+      const wager = room.ddWagers.get(myPlayerId);
+      const correct = choice === item.correct;
+      if (correct) player.score += wager;
+      else player.score = Math.max(0, player.score - wager);
+      room.ddCompleted.set(myPlayerId, { correct, amount: wager });
+      send(ws, { type: 'ddPersonalResult', correct, amount: wager, correctIndex: item.correct, newScore: player.score });
+      broadcastPlayers(myRoomCode);
+      maybeRevealDailyDouble(myRoomCode);
       return;
     }
   });
@@ -376,6 +548,7 @@ wss.on('connection', (ws) => {
     if (player) {
       player.ws = null;
       broadcastPlayers(myRoomCode);
+      if (room.phase === 'ddWager') maybeRevealDailyDouble(myRoomCode);
     }
     const codeAtClose = myRoomCode;
     setTimeout(() => {
