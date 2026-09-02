@@ -263,6 +263,185 @@
   }
   .dd-chip-label { display: block; font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
   .dd-chip.selected { border-color: var(--accent); background: #26200f; color: var(--accent); }
+
+  /* ---- "Up next: CATEGORY" tile, its own screen between the wheel and the question ---- */
+  #categoryAnnounceCard { padding-top: 0; text-align: center; }
+  .ca-media {
+    height: 150px;
+    margin: 0 -20px 16px;
+    background-size: cover;
+    background-position: center;
+    background-color: #14151d;
+    border-radius: 12px 12px 0 0;
+    position: relative;
+  }
+  .ca-media::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, rgba(28, 30, 41, 0) 45%, var(--card) 100%);
+  }
+  .ca-label { color: var(--muted); font-size: 0.85rem; margin: 0 0 2px; }
+  #caCatText { font-size: 1.7rem; margin: 0; color: var(--accent); }
+
+  /* ---- Themed round-intro / fanfare screens ---- */
+  #roundIntroCard { position: relative; overflow: hidden; transition: border-color 0.2s ease; }
+  #roundIntroCard .ri-icon { font-size: 2.6rem; margin-bottom: 6px; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4)); }
+  #roundIntroCard[data-theme="catclash"] {
+    border-color: var(--tile-1);
+    background: radial-gradient(circle at 50% 18%, rgba(62, 111, 217, 0.24), var(--card) 72%);
+  }
+  #roundIntroCard[data-theme="catclash"] h2 { color: var(--tile-1); }
+  #roundIntroCard[data-theme="catclash"] .ri-icon { display: none; }
+
+  /* Decorative Switchagories wheel on the round-intro screen — a second,
+     non-interactive copy of the real wheel graphic (wheelCard has the one
+     that actually lands on a category), rendered at ~2x size and idly
+     spinning just for visual flourish. */
+  .ri-wheel-scene { display: none; width: 100%; max-width: 352px; margin: 4px auto 8px; }
+  #roundIntroCard[data-theme="catclash"] .ri-wheel-scene { display: block; }
+  .ri-wheel-scene svg { width: 100%; height: auto; display: block; }
+  .ri-wheel-scene .wheel-disc { animation: riWheelSpin 14s linear infinite; transform-origin: 100px 100px; }
+  @keyframes riWheelSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+  #roundIntroCard[data-theme="lightning"] {
+    border-color: var(--bad);
+    background: radial-gradient(circle at 50% 18%, rgba(248, 113, 113, 0.22), var(--card) 72%);
+    animation: cardIn 0.25s ease-out, riFlicker 1.3s ease-in-out infinite;
+  }
+  #roundIntroCard[data-theme="lightning"] h2 { color: var(--bad); }
+  @keyframes riFlicker {
+    0%, 42%, 58%, 100% { filter: brightness(1); }
+    48%, 52% { filter: brightness(1.35); }
+  }
+
+  /* Lightning bolts flashing behind the title/subtitle for the whole time
+     the Lightning round-intro screen is up (ROUND_INTRO_MS) — each bolt
+     loops on that same period with a staggered start, so there's steady
+     bolt activity the entire time the card is visible, not a one-shot. */
+  .bolt-field { display: none; position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: -1; }
+  #roundIntroCard[data-theme="lightning"] .bolt-field { display: block; }
+  .bolt {
+    position: absolute;
+    top: -15%;
+    width: 4px;
+    height: 130%;
+    background: var(--bad);
+    opacity: 0;
+    filter: drop-shadow(0 0 8px var(--bad)) drop-shadow(0 0 16px rgba(248, 113, 113, 0.6));
+    clip-path: polygon(50% 0%, 65% 18%, 50% 20%, 68% 42%, 46% 45%, 62% 68%, 38% 70%, 56% 100%, 30% 58%, 48% 55%, 22% 28%, 45% 25%);
+  }
+  .bolt-1 { left: 12%; transform: rotate(10deg); animation: boltFlash 2.6s ease-in-out infinite; animation-delay: 0s; }
+  .bolt-2 { left: 48%; transform: rotate(-8deg) scale(0.85); animation: boltFlash 2.6s ease-in-out infinite; animation-delay: 0.87s; }
+  .bolt-3 { left: 82%; transform: rotate(12deg) scale(0.7); animation: boltFlash 2.6s ease-in-out infinite; animation-delay: 1.73s; }
+  @keyframes boltFlash {
+    0%, 100% { opacity: 0; }
+    3% { opacity: 1; }
+    7% { opacity: 0.15; }
+    11% { opacity: 0.9; }
+    16% { opacity: 0; }
+  }
+  #roundIntroCard[data-theme="dailydouble"] {
+    border-color: var(--accent);
+    background: radial-gradient(circle at 50% 18%, rgba(240, 166, 58, 0.24), var(--card) 72%);
+  }
+  #roundIntroCard[data-theme="dailydouble"] h2 { color: var(--accent); }
+  #roundIntroCard[data-theme="results"] {
+    border-color: var(--accent);
+    background: radial-gradient(circle at 50% 24%, rgba(255, 196, 92, 0.16), #0c0a08 78%);
+  }
+  #roundIntroCard[data-theme="results"] h2,
+  #roundIntroCard[data-theme="results"] .sub { color: var(--accent); }
+  #roundIntroCard[data-theme="results"] .ri-icon { display: none; }
+
+  .drum-scene { display: none; position: relative; height: 68px; margin: 16px 0 2px; }
+  #roundIntroCard[data-theme="results"] .drum-scene { display: block; }
+  .drum-flash {
+    position: absolute;
+    inset: -34px -20px auto -20px;
+    height: 140px;
+    background: radial-gradient(circle, rgba(255, 214, 120, 0.55) 0%, rgba(255, 214, 120, 0) 68%);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .drum-flash.hit { animation: drumFlashPop 0.4s ease-out; }
+  @keyframes drumFlashPop { 0% { opacity: 1; } 100% { opacity: 0; } }
+  .drum-stick {
+    position: absolute;
+    bottom: 4px;
+    width: 6px;
+    height: 46px;
+    border-radius: 3px;
+    background: linear-gradient(#d9a860, #8a5a24);
+    transform-origin: bottom center;
+  }
+  .drum-stick-left { left: calc(50% - 26px); transform: rotate(-18deg); }
+  .drum-stick-right { left: calc(50% + 20px); transform: rotate(18deg); }
+  .drum-stick-left.hit { animation: drumHitLeft 0.18s ease-out; }
+  .drum-stick-right.hit { animation: drumHitRight 0.18s ease-out; }
+  @keyframes drumHitLeft { 0% { transform: rotate(-18deg); } 40% { transform: rotate(-44deg); } 100% { transform: rotate(-18deg); } }
+  @keyframes drumHitRight { 0% { transform: rotate(18deg); } 40% { transform: rotate(44deg); } 100% { transform: rotate(18deg); } }
+  .drum-stick.crash-hit { background: linear-gradient(#ffe9a8, #c98f2e); }
+
+  /* ---- Roll call ---- */
+  .rollcall-ready { color: var(--good); font-weight: 700; font-size: 0.82rem; }
+  .rollcall-waiting { color: var(--muted); font-size: 0.82rem; }
+
+  /* ---- Correct-answer streak badge ----
+     Grows via `transform: scale()` (driven by the --grow-scale custom
+     property) rather than font-size, so the compounding growth never
+     reflows or squeezes the "Question X of Y" text next to it — instead,
+     at high streaks it visually balloons on top of the card as a
+     celebratory flourish. position+z-index lifts it above the card's own
+     content so it can paint over the question text/choices below when it
+     gets big; pointer-events:none guarantees it never blocks clicking
+     whatever's underneath it (answer choices, the lifeline button). */
+  .q-progress-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .streak-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-weight: 700;
+    font-size: 0.78rem;
+    color: var(--accent);
+    position: relative;
+    z-index: 5;
+    pointer-events: none;
+    transform-origin: right center;
+    transform: scale(var(--grow-scale, 1));
+  }
+  .streak-badge[data-tier="2"] { color: #f0973a; }
+  .streak-badge[data-tier="3"] { color: var(--bad); text-shadow: 0 0 12px rgba(226, 87, 76, 0.5); }
+  /* Our own `display` rule above beats the browser's default [hidden]
+     rule (author styles always win over user-agent styles, regardless of
+     specificity), which was silently keeping the badge visible — showing
+     a stale leftover count — even when JS set badgeEl.hidden = true. This
+     re-asserts the hide explicitly so hidden actually means hidden. */
+  .streak-badge[hidden] { display: none; }
+  .streak-badge.bump { animation: streakBump 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  @keyframes streakBump {
+    0% { transform: scale(calc(var(--grow-scale, 1) * 0.55)) rotate(-6deg); opacity: 0.3; }
+    55% { transform: scale(calc(var(--grow-scale, 1) * 1.3)) rotate(4deg); }
+    100% { transform: scale(var(--grow-scale, 1)) rotate(0); }
+  }
+
+  /* ---- 50/50 lifeline ---- */
+  .choice-btn.faded { opacity: 0.35; }
+  .lifeline-btn {
+    display: block;
+    width: auto;
+    margin: 12px auto 0;
+    padding: 8px 20px;
+    background: rgba(240, 166, 58, 0.1);
+    border: 1.5px dashed var(--accent);
+    color: var(--accent);
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+  }
+  .lifeline-btn:hover:not(:disabled) { background: rgba(240, 166, 58, 0.2); }
+  .lifeline-btn:disabled { opacity: 0.4; border-style: solid; background: transparent; }
 </style>
 </head>
 <body>
@@ -299,6 +478,13 @@
     <span class="leave-link" id="leaveLink">Leave this room</span>
   </div>
 
+  <div class="card" id="rollcallCard" style="display:none;">
+    <h2>Get Ready!</h2>
+    <p class="sub" style="margin-top:-4px;">Everyone presses ready before Switchagories begins.</p>
+    <ul class="players" id="rollcallList"><li class="empty">Nobody yet.</li></ul>
+    <button id="readyBtn" style="margin-top:14px;">I&rsquo;m Ready</button>
+  </div>
+
   <div class="card" id="wheelCard" style="display:none; text-align:center;">
     <h2>Switchagories</h2>
     <p class="sub" style="margin-top:-4px;">Multiple choice. Multiple topics.</p>
@@ -327,30 +513,73 @@
     <div id="wheelCatLabel"></div>
   </div>
 
+  <div class="card" id="categoryAnnounceCard" style="display:none;">
+    <div class="ca-media" id="caMedia"></div>
+    <p class="ca-label">Up next</p>
+    <h2 id="caCatText">CATEGORY</h2>
+  </div>
+
   <div class="card" id="roundIntroCard" style="display:none; text-align:center;">
+    <div class="bolt-field" aria-hidden="true">
+      <div class="bolt bolt-1"></div>
+      <div class="bolt bolt-2"></div>
+      <div class="bolt bolt-3"></div>
+    </div>
+    <div class="ri-icon" id="roundIntroIcon"></div>
+    <div class="ri-wheel-scene" aria-hidden="true">
+      <svg viewBox="0 0 200 200">
+        <circle class="wheel-rim" cx="100" cy="100" r="97"></circle>
+        <g class="wheel-disc">
+          <path class="wheel-wedge wedge-c1" d="M100,100 L100,4 A96,96 0 0,1 183.14,52 Z"></path>
+          <path class="wheel-wedge wedge-c2" d="M100,100 L183.14,52 A96,96 0 0,1 183.14,148 Z"></path>
+          <path class="wheel-wedge wedge-c3" d="M100,100 L183.14,148 A96,96 0 0,1 100,196 Z"></path>
+          <path class="wheel-wedge wedge-c4" d="M100,100 L100,196 A96,96 0 0,1 16.86,148 Z"></path>
+          <path class="wheel-wedge wedge-c5" d="M100,100 L16.86,148 A96,96 0 0,1 16.86,52 Z"></path>
+          <path class="wheel-wedge wedge-c6" d="M100,100 L16.86,52 A96,96 0 0,1 100,4 Z"></path>
+          <text class="wheel-icon" x="131" y="46.31">&#127757;</text>
+          <text class="wheel-icon" x="162" y="100">&#128300;</text>
+          <text class="wheel-icon" x="131" y="153.69">&#127963;&#65039;</text>
+          <text class="wheel-icon" x="69" y="153.69">&#128250;</text>
+          <text class="wheel-icon" x="38" y="100">&#127942;</text>
+          <text class="wheel-icon" x="69" y="46.31">&#127916;</text>
+        </g>
+        <circle class="wheel-hub" cx="100" cy="100" r="14"></circle>
+      </svg>
+    </div>
     <h2 id="roundIntroTitle">LIGHTNING ROUND</h2>
     <p class="sub" id="roundIntroSubtitle">True or false &mdash; answer fast!</p>
+    <div class="drum-scene" id="drumScene" aria-hidden="true">
+      <div class="drum-flash" id="drumFlash"></div>
+      <div class="drum-stick drum-stick-left" id="drumStickLeft"></div>
+      <div class="drum-stick drum-stick-right" id="drumStickRight"></div>
+    </div>
   </div>
 
   <div class="card" id="questionCard" style="display:none;">
-    <div class="q-progress" id="qProgress">Question 1 of 4</div>
+    <div class="q-progress-row">
+      <div class="q-progress" id="qProgress">Question 1 of 4</div>
+      <span class="streak-badge" id="streakBadgeQ" hidden><span aria-hidden="true">&#128293;</span><span id="streakCountQ">0</span></span>
+    </div>
     <div class="q-category" id="qCategory"></div>
     <div class="timer-bar-track"><div class="timer-bar-fill" id="timerBarFill"></div></div>
     <div class="q-text" id="qText">Question text</div>
     <div class="choices" id="choicesList"></div>
+    <button class="lifeline-btn" id="lifelineBtn" style="display:none;">&#9986;&#65039; Use 50/50 (1 left)</button>
     <div class="answered-count" id="answeredCountText"></div>
   </div>
 
   <div class="card" id="revealCard" style="display:none;">
-    <div class="q-progress" id="revealProgress">Question 1 of 4</div>
+    <div class="q-progress-row">
+      <div class="q-progress" id="revealProgress">Question 1 of 4</div>
+      <span class="streak-badge" id="streakBadgeR" hidden><span aria-hidden="true">&#128293;</span><span id="streakCountR">0</span></span>
+    </div>
     <div class="q-category" id="revealCategory"></div>
     <div class="q-text" id="revealQText">Question text</div>
     <div class="reveal-correct-note" id="revealNote"></div>
     <div class="choices" id="revealChoicesList"></div>
     <strong style="display:block; margin: 16px 0 8px;">Scoreboard:</strong>
     <ul class="scoreboard" id="scoreboardList"></ul>
-    <button id="nextQuestionBtn" style="display:none;">Next Question</button>
-    <p class="sub" id="waitingForHostReveal" style="display:none; margin-bottom:0;">Waiting for the host to continue&hellip;</p>
+    <p class="sub" id="revealHoldText" style="margin: 10px 0 0; text-align:center;">Next question in 4&hellip;</p>
   </div>
 
   <div class="card" id="ddWagerCard" style="display:none;">
@@ -375,8 +604,7 @@
     <ul class="scoreboard" id="ddResultsList"></ul>
     <strong style="display:block; margin: 16px 0 8px;">Scoreboard:</strong>
     <ul class="scoreboard" id="ddScoreboardList"></ul>
-    <button id="ddNextBtn" style="display:none;">Next Daily Double</button>
-    <p class="sub" id="ddWaitingForHost" style="display:none; margin-bottom:0;">Waiting for the host to continue&hellip;</p>
+    <p class="sub" id="ddRevealHoldText" style="margin: 10px 0 0; text-align:center;">Next Daily Double in 5&hellip;</p>
   </div>
 
   <div class="card" id="endedCard" style="display:none;">
@@ -408,14 +636,26 @@
   const startGameBtn = document.getElementById('startGameBtn');
   const waitingForHostNote = document.getElementById('waitingForHostNote');
 
+  const rollcallCard = document.getElementById('rollcallCard');
+  const rollcallList = document.getElementById('rollcallList');
+  const readyBtn = document.getElementById('readyBtn');
+
   const wheelCard = document.getElementById('wheelCard');
   const wheelDisc = document.getElementById('wheelDisc');
   const wheelGlow = document.getElementById('wheelGlow');
   const wheelCatLabel = document.getElementById('wheelCatLabel');
 
+  const categoryAnnounceCard = document.getElementById('categoryAnnounceCard');
+  const caMedia = document.getElementById('caMedia');
+  const caCatText = document.getElementById('caCatText');
+
   const roundIntroCard = document.getElementById('roundIntroCard');
+  const roundIntroIcon = document.getElementById('roundIntroIcon');
   const roundIntroTitle = document.getElementById('roundIntroTitle');
   const roundIntroSubtitle = document.getElementById('roundIntroSubtitle');
+  const drumFlash = document.getElementById('drumFlash');
+  const drumStickLeft = document.getElementById('drumStickLeft');
+  const drumStickRight = document.getElementById('drumStickRight');
 
   const questionCard = document.getElementById('questionCard');
   const qProgress = document.getElementById('qProgress');
@@ -424,6 +664,9 @@
   const choicesList = document.getElementById('choicesList');
   const timerBarFill = document.getElementById('timerBarFill');
   const answeredCountText = document.getElementById('answeredCountText');
+  const lifelineBtn = document.getElementById('lifelineBtn');
+  const streakBadgeQ = document.getElementById('streakBadgeQ');
+  const streakCountQ = document.getElementById('streakCountQ');
 
   const revealCard = document.getElementById('revealCard');
   const revealProgress = document.getElementById('revealProgress');
@@ -432,8 +675,9 @@
   const revealNote = document.getElementById('revealNote');
   const revealChoicesList = document.getElementById('revealChoicesList');
   const scoreboardList = document.getElementById('scoreboardList');
-  const nextQuestionBtn = document.getElementById('nextQuestionBtn');
-  const waitingForHostReveal = document.getElementById('waitingForHostReveal');
+  const revealHoldText = document.getElementById('revealHoldText');
+  const streakBadgeR = document.getElementById('streakBadgeR');
+  const streakCountR = document.getElementById('streakCountR');
 
   const ddWagerCard = document.getElementById('ddWagerCard');
   const ddWagerSub = document.getElementById('ddWagerSub');
@@ -452,8 +696,7 @@
   const ddRevealChoicesList = document.getElementById('ddRevealChoicesList');
   const ddResultsList = document.getElementById('ddResultsList');
   const ddScoreboardList = document.getElementById('ddScoreboardList');
-  const ddNextBtn = document.getElementById('ddNextBtn');
-  const ddWaitingForHost = document.getElementById('ddWaitingForHost');
+  const ddRevealHoldText = document.getElementById('ddRevealHoldText');
 
   const endedCard = document.getElementById('endedCard');
   const finalScoreboardList = document.getElementById('finalScoreboardList');
@@ -470,7 +713,7 @@
     actionStatus.textContent = text || ' ';
   }
   function showOnly(card) {
-    [chooseCard, roomCard, wheelCard, roundIntroCard, questionCard, revealCard, ddWagerCard, ddQuestionCard, ddRevealCard, endedCard].forEach((c) => {
+    [chooseCard, roomCard, rollcallCard, wheelCard, categoryAnnounceCard, roundIntroCard, questionCard, revealCard, ddWagerCard, ddQuestionCard, ddRevealCard, endedCard].forEach((c) => {
       c.style.display = c === card ? 'block' : 'none';
     });
   }
@@ -577,7 +820,10 @@
         try { thunder.currentTime = 0; thunder.play().catch(() => {}); } catch (e) {}
       },
       playCorrect(streakCount) {
-        const steps = Math.min(Math.max(0, (streakCount || 1) - 1), 10);
+        // Pitch keeps rising with every correct answer through the 12th in
+        // a row (11 semitone steps), then holds — matching how the flame
+        // badge's growth also stops at 12.
+        const steps = Math.min(Math.max(0, (streakCount || 1) - 1), 11);
         const shift = Math.pow(2, steps / 12);
         beepSeq([
           { freq: 523.25 * shift, at: 0.00, duration: 0.22, volume: 0.10, type: 'triangle' },
@@ -651,6 +897,28 @@
           { freq: 1174.66, at: 0.16, duration: 0.30, volume: 0.13, type: 'triangle' },
         ]);
       },
+      // Synthesized drum hit for the Final Results drum-roll build — a low
+      // tom body, brighter and longer on the crash. Ported straight from
+      // the single-device build's TensionAudio module.
+      playDrumHit(isCrash) {
+        if (muted) return;
+        const c = ensureCtx();
+        if (!c) return;
+        const now = c.currentTime;
+        const bodyDur = isCrash ? 0.3 : 0.16;
+        const osc = c.createOscillator();
+        const gain = c.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(isCrash ? 150 : 120, now);
+        osc.frequency.exponentialRampToValueAtTime(isCrash ? 70 : 64, now + bodyDur);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(isCrash ? 0.6 : 0.4, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + bodyDur);
+        osc.connect(gain);
+        gain.connect(c.destination);
+        osc.start(now);
+        osc.stop(now + bodyDur + 0.04);
+      },
     };
   })();
 
@@ -668,6 +936,17 @@
   const WHEEL_SPIN_MS = 3300;
   const WHEEL_LAND_PAUSE_MS = 100;
   let wheelSpinToken = 0;
+
+  // Category photos extracted from the single-device build, shown as a soft
+  // backdrop behind the wheel while it spins toward this question's category.
+  const CATEGORY_IMAGE_FILES = {
+    'Geography': 'geography.jpg',
+    'Science': 'science.jpg',
+    'History': 'history.jpg',
+    'Pop Culture': 'pop-culture.jpg',
+    'Sports': 'sports.jpg',
+    'Entertainment': 'entertainment.jpg',
+  };
 
   function categoryIcon(cat) {
     if (cat === 'Lightning') return '⚡';
@@ -735,6 +1014,48 @@
     requestAnimationFrame(frame);
   }
 
+  // Drum-roll build for the Final Results fanfare: a steady alternating
+  // groove that accelerates into both sticks landing together on the crash.
+  // Purely a client-side visual/audio flourish — the server just tells us
+  // when to start it and holds the room for a matching duration.
+  const DRUM_CRASH_T = 3.42;
+  function buildDrumHits() {
+    const hits = [];
+    let side = 0;
+    for (let t = 0.62; t < 2.08; t += 0.2) { hits.push({ t, side }); side ^= 1; }
+    let t2 = 2.14, iv = 0.15;
+    while (t2 < 3.26) { hits.push({ t: t2, side }); side ^= 1; t2 += iv; iv *= 0.9; }
+    hits.push({ t: DRUM_CRASH_T, side: 0, crash: true }, { t: DRUM_CRASH_T, side: 1, crash: true });
+    return hits;
+  }
+  let drumHitTimers = [];
+  function playDrumRoll() {
+    drumHitTimers.forEach((t) => clearTimeout(t));
+    drumHitTimers = [];
+    const sticks = { 0: drumStickLeft, 1: drumStickRight };
+    buildDrumHits().forEach((hit) => {
+      drumHitTimers.push(setTimeout(() => {
+        const stick = sticks[hit.side];
+        if (stick) {
+          stick.classList.remove('hit', 'crash-hit');
+          void stick.offsetWidth; // restart the CSS animation
+          stick.classList.add('hit');
+          if (hit.crash) stick.classList.add('crash-hit');
+        }
+        Sound.playDrumHit(!!hit.crash);
+        if (hit.crash && drumFlash) {
+          drumFlash.classList.remove('hit');
+          void drumFlash.offsetWidth;
+          drumFlash.classList.add('hit');
+        }
+      }, hit.t * 1000));
+    });
+  }
+  function stopDrumRoll() {
+    drumHitTimers.forEach((t) => clearTimeout(t));
+    drumHitTimers = [];
+  }
+
   let ws = null;
   let myPlayerId = null;
   let myRoomCode = null;
@@ -746,6 +1067,9 @@
   let timerInterval = null;
   let myWagerChoice = null;
   let myDdAnswer = null;
+  let myStreak = 0;
+  let myLifelineUsed = false;
+  let holdCountdownInterval = null;
 
   function wsUrl() {
     const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
@@ -787,6 +1111,11 @@
       let msg;
       try { msg = JSON.parse(evt.data); } catch (e) { return; }
 
+      // Any new phase message supersedes whatever reveal countdown was
+      // ticking on the previous screen — clear it here so it's never left
+      // running (or displayed) behind a screen the player has moved past.
+      clearInterval(holdCountdownInterval);
+
       if (msg.type === 'room') {
         myPlayerId = msg.playerId;
         myRoomCode = msg.code;
@@ -801,7 +1130,10 @@
 
         if (msg.phase === 'question' && msg.question) {
           myAnswer = msg.alreadyAnswered ? -2 : null; // -2 = answered before reload, choice unknown
+          const me = (msg.players || []).find((p) => p.id === myPlayerId);
+          myLifelineUsed = !!(me && me.lifelineUsed);
           renderQuestion(msg.question);
+          if (myAnswer === -2) lifelineBtn.disabled = true; // already answered before reload
           showOnly(questionCard);
           Sound.stopIntro();
           if (msg.question.cat === 'Lightning') { Sound.stopSwitchagories(); Sound.startLightning(); }
@@ -833,22 +1165,53 @@
         return;
       }
 
+      if (msg.type === 'rollcall') {
+        showOnly(rollcallCard);
+        renderRollcall(msg.players);
+        return;
+      }
+
       if (msg.type === 'wheel') {
         showOnly(wheelCard);
         spinCategoryWheel(msg.cat);
         return;
       }
 
+      if (msg.type === 'categoryAnnounce') {
+        const imgFile = CATEGORY_IMAGE_FILES[msg.cat];
+        caMedia.style.backgroundImage = imgFile ? "url('/images/categories/" + imgFile + "')" : '';
+        caCatText.textContent = categoryLabel(msg.cat);
+        showOnly(categoryAnnounceCard);
+        return;
+      }
+
       if (msg.type === 'roundIntro') {
         roundIntroTitle.textContent = msg.title || '';
         roundIntroSubtitle.textContent = msg.subtitle || '';
+        roundIntroIcon.textContent = msg.icon || '';
+        roundIntroCard.dataset.theme = msg.theme || '';
         showOnly(roundIntroCard);
         if (msg.title === 'LIGHTNING ROUND') {
           Sound.stopSwitchagories();
           Sound.playThunder();
+        } else if (msg.title === 'SWITCHAGORIES') {
+          Sound.stopIntro();
+          Sound.stopLightning();
+          Sound.startSwitchagories();
         } else {
           Sound.stopLightning();
         }
+        return;
+      }
+
+      if (msg.type === 'results') {
+        roundIntroTitle.textContent = 'FINAL RESULTS';
+        roundIntroSubtitle.textContent = 'Tallying the scores…';
+        roundIntroIcon.textContent = '';
+        roundIntroCard.dataset.theme = 'results';
+        showOnly(roundIntroCard);
+        Sound.stopAllMusic();
+        playDrumRoll();
         return;
       }
 
@@ -863,6 +1226,17 @@
 
       if (msg.type === 'answerCount') {
         answeredCountText.textContent = msg.answeredCount + ' of ' + msg.playerCount + ' answered';
+        return;
+      }
+
+      if (msg.type === 'lifelineResult') {
+        myLifelineUsed = true;
+        lifelineBtn.disabled = true;
+        lifelineBtn.textContent = '✂️ 50/50 used';
+        (msg.hideIndices || []).forEach((i) => {
+          const btn = choicesList.querySelector('.choice-btn[data-i="' + i + '"]');
+          if (btn) { btn.classList.add('faded'); btn.disabled = true; }
+        });
         return;
       }
 
@@ -896,6 +1270,7 @@
       }
 
       if (msg.type === 'ended') {
+        stopDrumRoll();
         renderFinal(msg.players);
         showOnly(endedCard);
         Sound.stopAllMusic();
@@ -907,6 +1282,8 @@
       if (msg.type === 'backToLobby') {
         myAnswer = null;
         myDdAnswer = null;
+        myStreak = 0;
+        myLifelineUsed = false;
         renderPlayers(msg.players);
         startGameBtn.style.display = iAmHost ? 'block' : 'none';
         waitingForHostNote.style.display = iAmHost ? 'none' : 'block';
@@ -940,6 +1317,27 @@
     }).join('');
   }
 
+  // --- Pre-game roll call ---
+  function renderRollcall(players) {
+    if (!players || !players.length) {
+      rollcallList.innerHTML = '<li class="empty">Nobody yet.</li>';
+      return;
+    }
+    rollcallList.innerHTML = players.map((p) => {
+      const mine = p.id === myPlayerId ? '<span class="me-tag">YOU</span>' : '';
+      const hostTag = p.isHost ? ' (host)' : '';
+      const offline = p.connected ? '' : ' offline';
+      const status = p.connected ? '' : ' — reconnecting…';
+      const readyTag = p.ready
+        ? ' <span class="rollcall-ready">&#10003; Ready</span>'
+        : ' <span class="rollcall-waiting">Waiting&hellip;</span>';
+      return '<li class="' + offline.trim() + '"><span>' + escapeHtml(p.name) + hostTag + status + readyTag + '</span>' + mine + '</li>';
+    }).join('');
+    const me = players.find((p) => p.id === myPlayerId);
+    readyBtn.disabled = !!(me && me.ready);
+    readyBtn.textContent = (me && me.ready) ? 'Waiting for others…' : 'I’m Ready';
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -948,6 +1346,56 @@
 
   function nameOrFallback() {
     return (nameInput.value || '').trim().slice(0, 20) || 'Player';
+  }
+
+  // --- Correct-answer streak badge — grows in size and shifts color at 3
+  // and 5 in a row, ported from the single-device build's flame counter. ---
+  function renderStreakBadge(badgeEl, countEl, streak) {
+    if (!badgeEl || !countEl) return;
+    if (streak >= 2) {
+      countEl.textContent = streak;
+      const tier = streak >= 5 ? '3' : (streak >= 3 ? '2' : '1');
+      badgeEl.setAttribute('data-tier', tier);
+      // Compounding size growth: starting with the 3rd correct answer in the
+      // streak, the flame and count grow 35% bigger per further correct
+      // answer, through the 12th correct answer (10 growth steps), then
+      // holds there. Applied via a --grow-scale custom property that CSS
+      // `transform: scale()` reads (see .streak-badge), not font-size — that
+      // keeps the badge's layout footprint fixed so it never squeezes or
+      // pushes the "Question X of Y" text next to it; at high streaks it's
+      // deliberately large enough to overlay the card instead.
+      const growthSteps = Math.min(Math.max(streak - 2, 0), 10);
+      const growthScale = Math.pow(1.35, growthSteps);
+      badgeEl.style.setProperty('--grow-scale', growthScale);
+      badgeEl.hidden = false;
+      badgeEl.classList.remove('bump');
+      void badgeEl.offsetWidth;
+      badgeEl.classList.add('bump');
+    } else {
+      badgeEl.hidden = true;
+      badgeEl.classList.remove('bump');
+      badgeEl.style.removeProperty('--grow-scale');
+    }
+  }
+
+  // --- Auto-advance countdown shown on reveal screens (no host click
+  // needed — the server holds each reveal up for msg.holdMs, then moves
+  // the game on by itself; this just displays the matching countdown). ---
+  function startHoldCountdown(el, holdMs, label) {
+    clearInterval(holdCountdownInterval);
+    if (!el) return;
+    let secs = Math.max(1, Math.ceil(holdMs / 1000));
+    const render = () => { el.textContent = (label || 'Next') + ' in ' + secs + '…'; };
+    render();
+    holdCountdownInterval = setInterval(() => {
+      secs--;
+      if (secs <= 0) {
+        clearInterval(holdCountdownInterval);
+        el.textContent = (label || 'Next') + '…';
+        return;
+      }
+      render();
+    }, 1000);
   }
 
   // --- Question phase ---
@@ -963,6 +1411,17 @@
     Array.from(choicesList.querySelectorAll('.choice-btn')).forEach((btn) => {
       btn.addEventListener('click', () => submitAnswer(Number(btn.dataset.i)));
     });
+
+    renderStreakBadge(streakBadgeQ, streakCountQ, myStreak);
+
+    // 50/50 lifeline: Switchagories only, one use per game per player.
+    if (q.cat !== 'Lightning') {
+      lifelineBtn.style.display = 'block';
+      lifelineBtn.disabled = myLifelineUsed;
+      lifelineBtn.textContent = myLifelineUsed ? '✂️ 50/50 used' : '✂️ Use 50/50 (1 left)';
+    } else {
+      lifelineBtn.style.display = 'none';
+    }
 
     clearInterval(timerInterval);
     const start = Date.now();
@@ -982,6 +1441,7 @@
       btn.disabled = true;
       if (Number(btn.dataset.i) === choice) btn.classList.add('picked');
     });
+    lifelineBtn.disabled = true;
     ws.send(JSON.stringify({ type: 'answer', choice }));
   }
 
@@ -1005,22 +1465,24 @@
     } else if (myAnswer === msg.correct) {
       revealNote.textContent = 'You got it right!';
       revealNote.className = 'reveal-correct-note me-right';
-      Sound.playCorrect();
+      myStreak += 1;
+      Sound.playCorrect(myStreak);
     } else if (myAnswer === null) {
       revealNote.textContent = "Time's up — you didn't answer in time.";
       revealNote.className = 'reveal-correct-note me-wrong';
+      myStreak = 0;
       Sound.playWrong();
     } else {
       revealNote.textContent = 'Not quite — the correct answer is highlighted.';
       revealNote.className = 'reveal-correct-note me-wrong';
+      myStreak = 0;
       Sound.playWrong();
     }
+    renderStreakBadge(streakBadgeR, streakCountR, myStreak);
 
     renderScoreboard(scoreboardList, msg.players);
 
-    nextQuestionBtn.style.display = iAmHost ? 'block' : 'none';
-    waitingForHostReveal.style.display = iAmHost ? 'none' : 'block';
-    nextQuestionBtn.textContent = msg.nextLabel || 'Next Question';
+    startHoldCountdown(revealHoldText, msg.holdMs || 3000, msg.holdLabel || 'Next question');
   }
 
   function renderScoreboard(el, players, opts) {
@@ -1103,9 +1565,7 @@
     }).join('');
     renderDdResults(ddResultsList, msg.results);
     renderScoreboard(ddScoreboardList, msg.players);
-    ddNextBtn.style.display = iAmHost ? 'block' : 'none';
-    ddWaitingForHost.style.display = iAmHost ? 'none' : 'block';
-    ddNextBtn.textContent = msg.nextLabel || 'Next Daily Double';
+    startHoldCountdown(ddRevealHoldText, msg.holdMs || 3000, msg.holdLabel || 'Next Daily Double');
   }
 
   function renderDdResults(el, results) {
@@ -1164,10 +1624,19 @@
     setTimeout(() => { playAgainBtn.disabled = false; }, 1500);
   });
 
+  readyBtn.addEventListener('click', () => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    readyBtn.disabled = true;
+    readyBtn.textContent = 'Waiting for others…';
+    ws.send(JSON.stringify({ type: 'ready' }));
+  });
+
   startGameBtn.addEventListener('click', () => {
     if (ws.readyState !== WebSocket.OPEN) return;
     startGameBtn.disabled = true;
-    Sound.stopIntro();
+    // Intro music keeps playing through the lobby and roll call — it only
+    // stops once the first round (Switchagories) actually begins, handled
+    // in the 'roundIntro' message handler below.
     ws.send(JSON.stringify({ type: 'startGame' }));
     setTimeout(() => { startGameBtn.disabled = false; }, 1500);
   });
@@ -1189,24 +1658,15 @@
     document.addEventListener(evt, () => Sound.unlock(), { capture: true, once: true });
   });
 
-  nextQuestionBtn.addEventListener('click', () => {
-    if (ws.readyState !== WebSocket.OPEN) return;
-    nextQuestionBtn.disabled = true;
-    ws.send(JSON.stringify({ type: 'nextQuestion' }));
-    setTimeout(() => { nextQuestionBtn.disabled = false; }, 1500);
-  });
-
   ddLockWagerBtn.addEventListener('click', () => {
     if (ws.readyState !== WebSocket.OPEN || myWagerChoice === null) return;
     ddLockWagerBtn.disabled = true;
     ws.send(JSON.stringify({ type: 'ddWagerLock', amount: myWagerChoice }));
   });
 
-  ddNextBtn.addEventListener('click', () => {
-    if (ws.readyState !== WebSocket.OPEN) return;
-    ddNextBtn.disabled = true;
-    ws.send(JSON.stringify({ type: 'nextQuestion' }));
-    setTimeout(() => { ddNextBtn.disabled = false; }, 1500);
+  lifelineBtn.addEventListener('click', () => {
+    if (ws.readyState !== WebSocket.OPEN || myLifelineUsed || myAnswer !== null) return;
+    ws.send(JSON.stringify({ type: 'useLifeline' }));
   });
 
   Sound.startIntro();

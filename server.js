@@ -78,9 +78,23 @@ const WHEEL_LAND_PAUSE_MS = 100;
 const WHEEL_TRANSITION_TAIL_MS = 1100;
 const WHEEL_TOTAL_MS = WHEEL_SPIN_MS + WHEEL_LAND_PAUSE_MS + WHEEL_TRANSITION_TAIL_MS;
 
+// How long the "Up next: CATEGORY" tile (with its photo background) stays up
+// on its own screen after the wheel lands, before the question appears.
+const CATEGORY_ANNOUNCE_MS = 1800;
+
 // How long the one-time "LIGHTNING ROUND" title card stays up before the
 // first true/false statement appears.
 const ROUND_INTRO_MS = 2600;
+
+// How long the "FINAL RESULTS" drum-roll fanfare plays before the scoreboard
+// actually appears. Matches the single-device build's results transition.
+const RESULTS_FANFARE_MS = 4200;
+
+// How long a reveal screen stays up before the game auto-advances on its
+// own — no host click required. Matches the single-device build's 3s
+// countdown for both the main/Lightning reveal and the Daily Double reveal.
+const REVEAL_HOLD_MS = 3000;
+const DD_REVEAL_HOLD_MS = 3000;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -119,8 +133,8 @@ function wagerOptions(score) {
 // In-memory room state.
 // code -> {
 //   players: Map(playerId -> { id, name, isHost, ws, score }),
-//   phase: 'lobby' | 'wheel' | 'question' | 'reveal' | 'roundIntro'
-//          | 'ddWager' | 'ddRoundReveal' | 'ended',
+//   phase: 'lobby' | 'rollcall' | 'wheel' | 'categoryAnnounce' | 'question' | 'reveal'
+//          | 'roundIntro' | 'ddWager' | 'ddRoundReveal' | 'results' | 'ended',
 //   round: 'main' | 'lightning' | 'dailyDouble'  (which set questionIndex indexes into)
 //   mainSet: [question, ...]  (this room's shuffled order, set at startGame)
 //   lightningSet: [question, ...]  (same shape as mainSet, set at startGame)
@@ -129,6 +143,7 @@ function wagerOptions(score) {
 //   answers: Map(playerId -> choiceIndex),               // main/lightning rounds
 //   ddWagers: Map(playerId -> amount)                     // current Daily Double item
 //   ddCompleted: Map(playerId -> { correct, amount })     // current Daily Double item
+//   readyPlayers: Set(playerId)                            // current rollcall
 //   timer: Timeout | null,
 // }
 const rooms = new Map();
@@ -154,6 +169,8 @@ function roomSnapshot(room) {
     isHost: p.isHost,
     connected: !!p.ws,
     score: p.score,
+    ready: room.readyPlayers ? room.readyPlayers.has(p.id) : false,
+    lifelineUsed: !!p.lifelineUsed,
   }));
 }
 
@@ -206,7 +223,64 @@ function startWheel(code, index) {
   const target = room.mainSet[index];
   broadcast(code, { type: 'wheel', cat: target.cat, index, total: room.mainSet.length });
   clearTimeout(room.timer);
-  room.timer = setTimeout(() => startQuestion(code, index), WHEEL_TOTAL_MS);
+  room.timer = setTimeout(() => startCategoryAnnounce(code, index), WHEEL_TOTAL_MS);
+}
+
+// Its own screen, shown after the wheel lands and before the question: a
+// full "Up next: CATEGORY" tile with that category's photo behind it —
+// distinct from the wheel screen itself, matching the single-device build.
+function startCategoryAnnounce(code, index) {
+  const room = rooms.get(code);
+  if (!room) return;
+  room.phase = 'categoryAnnounce';
+  room.questionIndex = index;
+  const target = room.mainSet[index];
+  broadcast(code, { type: 'categoryAnnounce', cat: target.cat, index, total: room.mainSet.length });
+  clearTimeout(room.timer);
+  room.timer = setTimeout(() => startQuestion(code, index), CATEGORY_ANNOUNCE_MS);
+}
+
+// Pre-game roll call: every connected player (host included) has to press
+// Ready before Switchagories begins. Only currently-connected players are
+// required, so someone who never loads the page can't block the table
+// forever, mirroring how the Daily Double "everyone's turn" gate works.
+function startRollCall(code) {
+  const room = rooms.get(code);
+  if (!room) return;
+  room.phase = 'rollcall';
+  room.readyPlayers = new Set();
+  clearTimeout(room.timer);
+  room.timer = null;
+  broadcast(code, { type: 'rollcall', players: roomSnapshot(room) });
+}
+
+function maybeAdvanceRollCall(code) {
+  const room = rooms.get(code);
+  if (!room || room.phase !== 'rollcall') return;
+  const connected = Array.from(room.players.values()).filter((p) => p.ws);
+  if (!connected.length) return;
+  const allReady = connected.every((p) => room.readyPlayers.has(p.id));
+  if (!allReady) return;
+  startSwitchagoriesIntro(code);
+}
+
+// One-time title card shown before the very first Switchagories wheel spin
+// of the game (or replay). Every subsequent question in the round reuses
+// the plain wheel spin — this is just the round's opening beat.
+function startSwitchagoriesIntro(code) {
+  const room = rooms.get(code);
+  if (!room) return;
+  room.round = 'main';
+  room.phase = 'roundIntro';
+  broadcast(code, {
+    type: 'roundIntro',
+    title: 'SWITCHAGORIES',
+    subtitle: 'Multiple choice. Multiple topics.',
+    theme: 'catclash',
+    icon: '🎡',
+  });
+  clearTimeout(room.timer);
+  room.timer = setTimeout(() => startWheel(code, 0), ROUND_INTRO_MS);
 }
 
 // One-time title card shown before the Lightning round begins (no per-item
@@ -216,7 +290,13 @@ function startLightningRound(code) {
   if (!room) return;
   room.round = 'lightning';
   room.phase = 'roundIntro';
-  broadcast(code, { type: 'roundIntro', title: 'LIGHTNING ROUND', subtitle: 'True or false — answer fast!' });
+  broadcast(code, {
+    type: 'roundIntro',
+    title: 'LIGHTNING ROUND',
+    subtitle: 'True or false — answer fast!',
+    theme: 'lightning',
+    icon: '⚡',
+  });
   clearTimeout(room.timer);
   room.timer = setTimeout(() => startQuestion(code, 0), ROUND_INTRO_MS);
 }
@@ -255,9 +335,9 @@ function revealAnswer(code) {
   }
 
   const isLastInRound = room.questionIndex >= set.length - 1;
-  const nextLabel = room.round === 'main'
-    ? (isLastInRound ? 'Start Lightning Round' : 'Next Question')
-    : (isLastInRound ? 'Start Daily Double' : 'Next Question');
+  const holdLabel = room.round === 'main'
+    ? (isLastInRound ? 'Lightning Round starting' : 'Next question')
+    : (isLastInRound ? 'Daily Double starting' : 'Next question');
 
   broadcast(code, {
     type: 'reveal',
@@ -266,8 +346,32 @@ function revealAnswer(code) {
     correct: q.correct,
     answers: answerMap,
     players: roomSnapshot(room),
-    nextLabel,
+    holdLabel,
+    holdMs: REVEAL_HOLD_MS,
   });
+
+  room.timer = setTimeout(() => advanceAfterReveal(code), REVEAL_HOLD_MS);
+}
+
+// Auto-advances past a main/lightning reveal — no host click needed. Called
+// once from a server timer set right after the 'reveal' broadcast above.
+function advanceAfterReveal(code) {
+  const room = rooms.get(code);
+  if (!room) return;
+  const next = room.questionIndex + 1;
+  if (room.round === 'main') {
+    if (next >= room.mainSet.length) {
+      startLightningRound(code);
+    } else {
+      startWheel(code, next);
+    }
+  } else if (room.round === 'lightning') {
+    if (next >= room.lightningSet.length) {
+      startDailyDoubleRoundIntro(code);
+    } else {
+      startQuestion(code, next);
+    }
+  }
 }
 
 // One-time title card before the Daily Double round begins.
@@ -280,6 +384,8 @@ function startDailyDoubleRoundIntro(code) {
     type: 'roundIntro',
     title: 'DAILY DOUBLE',
     subtitle: 'Wager your own points — before you see the question.',
+    theme: 'dailydouble',
+    icon: '💰',
   });
   clearTimeout(room.timer);
   room.timer = setTimeout(() => startDailyDoubleItem(code, 0), ROUND_INTRO_MS);
@@ -331,8 +437,39 @@ function maybeRevealDailyDouble(code) {
     correctIndex: item.correct,
     results,
     players: roomSnapshot(room),
-    nextLabel: isLastInRound ? 'See Final Scores' : 'Next Daily Double',
+    holdLabel: isLastInRound ? 'Final results coming up' : 'Next Daily Double',
+    holdMs: DD_REVEAL_HOLD_MS,
   });
+
+  room.timer = setTimeout(() => advanceAfterDailyDouble(code), DD_REVEAL_HOLD_MS);
+}
+
+// Auto-advances past a Daily Double reveal — no host click needed.
+function advanceAfterDailyDouble(code) {
+  const room = rooms.get(code);
+  if (!room) return;
+  const next = room.questionIndex + 1;
+  if (next >= room.dailyDoubleSet.length) {
+    startResultsFanfare(code);
+  } else {
+    startDailyDoubleItem(code, next);
+  }
+}
+
+// One-time "FINAL RESULTS" fanfare (drum-roll build + crash, synthesized
+// client-side — no asset file) shown right before the final scoreboard.
+// Scores are already final by this point; this is purely a beat of drama
+// before everyone sees where they landed.
+function startResultsFanfare(code) {
+  const room = rooms.get(code);
+  if (!room) return;
+  room.phase = 'results';
+  clearTimeout(room.timer);
+  broadcast(code, { type: 'results' });
+  room.timer = setTimeout(() => {
+    room.phase = 'ended';
+    broadcast(code, { type: 'ended', players: roomSnapshot(room) });
+  }, RESULTS_FANFARE_MS);
 }
 
 wss.on('connection', (ws) => {
@@ -362,9 +499,10 @@ wss.on('connection', (ws) => {
         answers: new Map(),
         ddWagers: new Map(),
         ddCompleted: new Map(),
+        readyPlayers: new Set(),
         timer: null,
       };
-      room.players.set(playerId, { id: playerId, name, isHost: true, ws, score: 0 });
+      room.players.set(playerId, { id: playerId, name, isHost: true, ws, score: 0, lifelineUsed: false });
       rooms.set(code, room);
       myRoomCode = code;
       myPlayerId = playerId;
@@ -381,7 +519,7 @@ wss.on('connection', (ws) => {
         return;
       }
       const playerId = genPlayerId();
-      room.players.set(playerId, { id: playerId, name, isHost: false, ws, score: 0 });
+      room.players.set(playerId, { id: playerId, name, isHost: false, ws, score: 0, lifelineUsed: false });
       myRoomCode = code;
       myPlayerId = playerId;
       send(ws, {
@@ -432,6 +570,12 @@ wss.on('connection', (ws) => {
           send(ws, { type: 'ddWager', index: room.questionIndex, total: room.dailyDoubleSet.length, options: wagerOptions(player.score) });
         }
       }
+      // Same idea for the roll call: the whole table waits for every
+      // connected player to press Ready, so a reconnecting player needs
+      // that screen re-sent or the game could hang on them indefinitely.
+      if (room.phase === 'rollcall') {
+        send(ws, { type: 'rollcall', players: roomSnapshot(room) });
+      }
       return;
     }
 
@@ -449,7 +593,16 @@ wss.on('connection', (ws) => {
         room.lightningSet = room.lightningSet.slice(0, TEST_LIMITS.lightning);
         room.dailyDoubleSet = room.dailyDoubleSet.slice(0, TEST_LIMITS.dailyDouble);
       }
-      startWheel(myRoomCode, 0);
+      startRollCall(myRoomCode);
+      return;
+    }
+
+    if (msg.type === 'ready') {
+      const room = rooms.get(myRoomCode);
+      if (!room || !myPlayerId || room.phase !== 'rollcall') return;
+      room.readyPlayers.add(myPlayerId);
+      broadcast(myRoomCode, { type: 'rollcall', players: roomSnapshot(room) });
+      maybeAdvanceRollCall(myRoomCode);
       return;
     }
 
@@ -473,35 +626,22 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    if (msg.type === 'nextQuestion') {
+    // 50/50 lifeline: Switchagories only, one use per game per player. Picks
+    // 2 of the (3) wrong choices to hide and tells only the requesting
+    // player — it's personal, not a shared room-wide effect.
+    if (msg.type === 'useLifeline') {
       const room = rooms.get(myRoomCode);
       if (!room || !myPlayerId) return;
+      if (room.phase !== 'question' || room.round !== 'main') return;
       const player = room.players.get(myPlayerId);
-      if (!player || !player.isHost) return;
-      if (room.phase !== 'reveal' && room.phase !== 'ddRoundReveal') return;
-      const next = room.questionIndex + 1;
-
-      if (room.round === 'main') {
-        if (next >= room.mainSet.length) {
-          startLightningRound(myRoomCode);
-        } else {
-          startWheel(myRoomCode, next);
-        }
-      } else if (room.round === 'lightning') {
-        if (next >= room.lightningSet.length) {
-          startDailyDoubleRoundIntro(myRoomCode);
-        } else {
-          startQuestion(myRoomCode, next);
-        }
-      } else if (room.round === 'dailyDouble') {
-        if (next >= room.dailyDoubleSet.length) {
-          room.phase = 'ended';
-          clearTimeout(room.timer);
-          broadcast(myRoomCode, { type: 'ended', players: roomSnapshot(room) });
-        } else {
-          startDailyDoubleItem(myRoomCode, next);
-        }
-      }
+      if (!player || player.lifelineUsed) return;
+      if (room.answers.has(myPlayerId)) return; // can't use after answering
+      player.lifelineUsed = true;
+      const q = activeSet(room)[room.questionIndex];
+      const wrongIdx = [];
+      q.choices.forEach((c, i) => { if (i !== q.correct) wrongIdx.push(i); });
+      const hideIndices = shuffle(wrongIdx).slice(0, 2);
+      send(ws, { type: 'lifelineResult', hideIndices });
       return;
     }
 
@@ -516,9 +656,10 @@ wss.on('connection', (ws) => {
       room.answers = new Map();
       room.ddWagers = new Map();
       room.ddCompleted = new Map();
+      room.readyPlayers = new Set();
       clearTimeout(room.timer);
       room.timer = null;
-      for (const p of room.players.values()) p.score = 0;
+      for (const p of room.players.values()) { p.score = 0; p.lifelineUsed = false; }
       broadcast(myRoomCode, { type: 'backToLobby', players: roomSnapshot(room) });
       return;
     }
@@ -567,6 +708,7 @@ wss.on('connection', (ws) => {
       player.ws = null;
       broadcastPlayers(myRoomCode);
       if (room.phase === 'ddWager') maybeRevealDailyDouble(myRoomCode);
+      if (room.phase === 'rollcall') maybeAdvanceRollCall(myRoomCode);
     }
     const codeAtClose = myRoomCode;
     setTimeout(() => {
