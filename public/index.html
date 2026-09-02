@@ -14,6 +14,11 @@
     --accent: #f0a63a;
     --good: #4ade80;
     --bad: #f87171;
+    --tile-1: #3e6fd9;
+    --tile-2: #d9673e;
+    --tile-3: #3ed96b;
+    --tile-4: #9a3ed9;
+    --tile-5: #3ec9d9;
   }
   * { box-sizing: border-box; }
   body {
@@ -143,6 +148,91 @@
   .reveal-correct-note { font-size: 0.9rem; margin-bottom: 12px; }
   .reveal-correct-note.me-right { color: var(--good); }
   .reveal-correct-note.me-wrong { color: var(--bad); }
+  .q-category {
+    display: inline-block;
+    background: #14151d;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 999px;
+    margin-bottom: 10px;
+  }
+
+  /* ---- Switchagories wheel ---- */
+  .wheel-scene {
+    position: relative;
+    width: 11rem;
+    height: 11rem;
+    margin: 4px auto 10px;
+  }
+  .wheel-glow {
+    position: absolute;
+    inset: -18%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(240, 166, 58, 0.30) 0%, rgba(62, 111, 217, 0.16) 45%, rgba(62, 111, 217, 0) 72%);
+    filter: blur(2px);
+    animation: wheelGlowPulse 2.4s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes wheelGlowPulse {
+    0%, 100% { opacity: 0.7; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.06); }
+  }
+  .wheel-glow.flash { animation: wheelGlowFlash 0.6s ease-out; }
+  @keyframes wheelGlowFlash {
+    0% { opacity: 1; transform: scale(1.3); filter: blur(1px) brightness(2.2); }
+    100% { opacity: 0.7; transform: scale(1); filter: blur(2px) brightness(1); }
+  }
+  .wheel-svg { position: relative; display: block; }
+  .wheel-rim {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 3;
+    filter: drop-shadow(0 0 6px rgba(240, 166, 58, 0.65));
+  }
+  .wheel-disc { transform-origin: 100px 100px; transform: rotate(0deg); }
+  .wheel-wedge {
+    stroke: var(--bg);
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+    transition: filter 0.15s ease-out;
+  }
+  .wedge-c1 { fill: var(--tile-1); }
+  .wedge-c2 { fill: var(--tile-2); }
+  .wedge-c3 { fill: var(--tile-3); }
+  .wedge-c4 { fill: var(--tile-4); }
+  .wedge-c5 { fill: var(--accent); }
+  .wedge-c6 { fill: var(--tile-5); }
+  .wheel-wedge.landed { filter: brightness(1.45) drop-shadow(0 0 8px rgba(255, 255, 255, 0.85)); }
+  .wheel-icon {
+    font-size: 15px;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+  }
+  .wheel-hub {
+    fill: var(--accent);
+    stroke: #fff6d8;
+    stroke-width: 1.2;
+    filter: drop-shadow(0 0 6px rgba(240, 166, 58, 0.8));
+  }
+  .wheel-pointer {
+    position: absolute;
+    top: -0.35rem;
+    left: 50%;
+    width: 0;
+    height: 0;
+    margin-left: -0.55rem;
+    border-left: 0.55rem solid transparent;
+    border-right: 0.55rem solid transparent;
+    border-top: 0.9rem solid var(--accent);
+    filter: drop-shadow(0 0 5px rgba(240, 166, 58, 0.85));
+    z-index: 2;
+  }
+  #wheelCatLabel { min-height: 1.4em; font-weight: 800; font-size: 1.1rem; color: var(--accent); margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -178,8 +268,37 @@
     <span class="leave-link" id="leaveLink">Leave this room</span>
   </div>
 
+  <div class="card" id="wheelCard" style="display:none; text-align:center;">
+    <h2>Switchagories</h2>
+    <p class="sub" style="margin-top:-4px;">Multiple choice. Multiple topics.</p>
+    <div class="wheel-scene" id="wheelScene">
+      <div class="wheel-glow" id="wheelGlow"></div>
+      <svg class="wheel-svg" viewBox="0 0 200 200" width="176" height="176">
+        <circle class="wheel-rim" cx="100" cy="100" r="97"></circle>
+        <g id="wheelDisc" class="wheel-disc">
+          <path class="wheel-wedge wedge-c1" data-i="0" d="M100,100 L100,4 A96,96 0 0,1 183.14,52 Z"></path>
+          <path class="wheel-wedge wedge-c2" data-i="1" d="M100,100 L183.14,52 A96,96 0 0,1 183.14,148 Z"></path>
+          <path class="wheel-wedge wedge-c3" data-i="2" d="M100,100 L183.14,148 A96,96 0 0,1 100,196 Z"></path>
+          <path class="wheel-wedge wedge-c4" data-i="3" d="M100,100 L100,196 A96,96 0 0,1 16.86,148 Z"></path>
+          <path class="wheel-wedge wedge-c5" data-i="4" d="M100,100 L16.86,148 A96,96 0 0,1 16.86,52 Z"></path>
+          <path class="wheel-wedge wedge-c6" data-i="5" d="M100,100 L16.86,52 A96,96 0 0,1 100,4 Z"></path>
+          <text class="wheel-icon" x="131" y="46.31">&#127757;</text>
+          <text class="wheel-icon" x="162" y="100">&#128300;</text>
+          <text class="wheel-icon" x="131" y="153.69">&#127963;&#65039;</text>
+          <text class="wheel-icon" x="69" y="153.69">&#128250;</text>
+          <text class="wheel-icon" x="38" y="100">&#127942;</text>
+          <text class="wheel-icon" x="69" y="46.31">&#127916;</text>
+        </g>
+        <circle class="wheel-hub" cx="100" cy="100" r="14"></circle>
+      </svg>
+      <div class="wheel-pointer" aria-hidden="true"></div>
+    </div>
+    <div id="wheelCatLabel"></div>
+  </div>
+
   <div class="card" id="questionCard" style="display:none;">
     <div class="q-progress" id="qProgress">Question 1 of 4</div>
+    <div class="q-category" id="qCategory"></div>
     <div class="timer-bar-track"><div class="timer-bar-fill" id="timerBarFill"></div></div>
     <div class="q-text" id="qText">Question text</div>
     <div class="choices" id="choicesList"></div>
@@ -188,6 +307,7 @@
 
   <div class="card" id="revealCard" style="display:none;">
     <div class="q-progress" id="revealProgress">Question 1 of 4</div>
+    <div class="q-category" id="revealCategory"></div>
     <div class="q-text" id="revealQText">Question text</div>
     <div class="reveal-correct-note" id="revealNote"></div>
     <div class="choices" id="revealChoicesList"></div>
@@ -223,8 +343,14 @@
   const startGameBtn = document.getElementById('startGameBtn');
   const waitingForHostNote = document.getElementById('waitingForHostNote');
 
+  const wheelCard = document.getElementById('wheelCard');
+  const wheelDisc = document.getElementById('wheelDisc');
+  const wheelGlow = document.getElementById('wheelGlow');
+  const wheelCatLabel = document.getElementById('wheelCatLabel');
+
   const questionCard = document.getElementById('questionCard');
   const qProgress = document.getElementById('qProgress');
+  const qCategory = document.getElementById('qCategory');
   const qText = document.getElementById('qText');
   const choicesList = document.getElementById('choicesList');
   const timerBarFill = document.getElementById('timerBarFill');
@@ -232,6 +358,7 @@
 
   const revealCard = document.getElementById('revealCard');
   const revealProgress = document.getElementById('revealProgress');
+  const revealCategory = document.getElementById('revealCategory');
   const revealQText = document.getElementById('revealQText');
   const revealNote = document.getElementById('revealNote');
   const revealChoicesList = document.getElementById('revealChoicesList');
@@ -251,9 +378,82 @@
     actionStatus.textContent = text || ' ';
   }
   function showOnly(card) {
-    [chooseCard, roomCard, questionCard, revealCard, endedCard].forEach((c) => {
+    [chooseCard, roomCard, wheelCard, questionCard, revealCard, endedCard].forEach((c) => {
       c.style.display = c === card ? 'block' : 'none';
     });
+  }
+
+  // Order matters — lines up with the wheel's 6 wedges (wedge-c1..c6) and
+  // with the server's own CATEGORY_WHEEL, since the server always tells us
+  // the real category and we just need the matching icon/index here.
+  const CATEGORY_WHEEL = [
+    { cat: 'Geography', icon: '🌍' },
+    { cat: 'Science', icon: '🔬' },
+    { cat: 'History', icon: '🏛️' },
+    { cat: 'Pop Culture', icon: '📺' },
+    { cat: 'Sports', icon: '🏆' },
+    { cat: 'Entertainment', icon: '🎬' },
+  ];
+  const WHEEL_SPIN_MS = 3300;
+  const WHEEL_LAND_PAUSE_MS = 100;
+  let wheelSpinToken = 0;
+
+  function categoryIcon(cat) {
+    const found = CATEGORY_WHEEL.find((w) => w.cat === cat);
+    return found ? found.icon : '';
+  }
+
+  function categoryLabel(cat) {
+    return (categoryIcon(cat) + ' ' + (cat || '')).trim();
+  }
+
+  // Spin animation only — always lands on the real category the server told
+  // us via the 'wheel' message. The server holds the game in that phase for
+  // a matching duration before it actually reveals the question, so this is
+  // just show; nothing here affects who gets which question.
+  function spinCategoryWheel(targetCat) {
+    if (!wheelDisc) return;
+    const myToken = ++wheelSpinToken;
+    let idx = CATEGORY_WHEEL.findIndex((w) => w.cat === targetCat);
+    if (idx < 0) idx = 0;
+    Array.from(document.querySelectorAll('.wheel-wedge')).forEach((w) => w.classList.remove('landed'));
+    wheelCatLabel.textContent = '';
+    wheelDisc.style.transition = 'none';
+    wheelDisc.style.transform = 'rotate(0deg)';
+
+    const fullSpins = 6 + Math.floor(Math.random() * 3);
+    const jitter = Math.random() * 30 - 15;
+    const centerAngle = idx * 60 + 30;
+    const landAngle = ((centerAngle + jitter) % 360 + 360) % 360;
+    const finalRotation = fullSpins * 360 + ((360 - landAngle) % 360);
+
+    function land() {
+      if (myToken !== wheelSpinToken) return;
+      wheelDisc.style.transform = 'rotate(' + finalRotation + 'deg)';
+      const wedges = document.querySelectorAll('.wheel-wedge');
+      if (wedges[idx]) wedges[idx].classList.add('landed');
+      wheelGlow.classList.remove('flash');
+      void wheelGlow.offsetWidth;
+      wheelGlow.classList.add('flash');
+      wheelCatLabel.textContent = categoryLabel(targetCat);
+    }
+
+    let startTime = null;
+    function frame(ts) {
+      if (myToken !== wheelSpinToken) return;
+      if (startTime === null) startTime = ts;
+      const elapsed = ts - startTime;
+      const t = Math.min(1, elapsed / WHEEL_SPIN_MS);
+      const eased = 1 - Math.pow(1 - t, 4);
+      const current = finalRotation * eased;
+      wheelDisc.style.transform = 'rotate(' + current + 'deg)';
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        setTimeout(land, WHEEL_LAND_PAUSE_MS);
+      }
+    }
+    requestAnimationFrame(frame);
   }
 
   let ws = null;
@@ -338,6 +538,12 @@
         return;
       }
 
+      if (msg.type === 'wheel') {
+        showOnly(wheelCard);
+        spinCategoryWheel(msg.cat);
+        return;
+      }
+
       if (msg.type === 'question') {
         myAnswer = null;
         renderQuestion(msg);
@@ -400,6 +606,7 @@
   function renderQuestion(q) {
     currentChoices = q.choices;
     qProgress.textContent = 'Question ' + (q.index + 1) + ' of ' + q.total;
+    qCategory.textContent = categoryLabel(q.cat);
     qText.textContent = q.q;
     answeredCountText.textContent = '';
     choicesList.innerHTML = q.choices.map((c, i) =>
@@ -435,6 +642,7 @@
     clearInterval(timerInterval);
     const q = { index: msg.index }; // total unknown here; reuse progress text loosely
     revealProgress.textContent = 'Question ' + (msg.index + 1);
+    revealCategory.textContent = categoryLabel(msg.cat);
     revealQText.textContent = qText.textContent;
 
     revealChoicesList.innerHTML = currentChoices.map((c, i) => {
