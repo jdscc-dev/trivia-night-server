@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trivia Night — Lobby (WebSocket)</title>
+<style>
+  :root {
+    --bg: #12131a;
+    --card: #1c1e29;
+    --border: #2c2f3f;
+    --fg: #f2f2f5;
+    --muted: #9498ab;
+    --accent: #f0a63a;
+    --good: #4ade80;
+    --bad: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 28px 18px 60px;
+  }
+  h1 { font-size: 1.4rem; margin-bottom: 2px; }
+  p.sub { color: var(--muted); margin-top: 4px; font-size: 0.92rem; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin: 16px 0;
+  }
+  .status-line { display: flex; align-items: center; gap: 8px; font-size: 0.92rem; margin: 6px 0; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+  .dot.ok { background: var(--good); }
+  .dot.err { background: var(--bad); }
+  .dot.pending { background: var(--accent); }
+  h2 { font-size: 1.05rem; margin: 0 0 10px; }
+  input {
+    width: 100%;
+    background: #14151d;
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 1rem;
+    margin-bottom: 10px;
+  }
+  input.code-input {
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    font-weight: 700;
+    text-align: center;
+  }
+  button {
+    background: var(--accent);
+    color: #1a1206;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--fg);
+    font-weight: 500;
+  }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .room-code-display {
+    font-size: 2.2rem;
+    font-weight: 800;
+    letter-spacing: 0.25em;
+    text-align: center;
+    color: var(--accent);
+    margin: 4px 0 14px;
+  }
+  ul.players { list-style: none; padding: 0; margin: 8px 0 0; }
+  ul.players li {
+    padding: 8px 10px;
+    background: #14151d;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    font-size: 0.92rem;
+    display: flex;
+    justify-content: space-between;
+    opacity: 1;
+  }
+  ul.players li.offline { opacity: 0.5; }
+  .me-tag {
+    background: var(--accent);
+    color: #1a1206;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .empty { color: var(--muted); font-style: italic; font-size: 0.88rem; }
+  .leave-link {
+    display: inline-block;
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+
+  <h1>Trivia Night &mdash; Lobby (WebSocket)</h1>
+  <p class="sub">Own server, own protocol &mdash; no Firebase. Proves rooms sync across devices/accounts.</p>
+
+  <div class="card">
+    <div class="status-line"><span class="dot" id="connDot"></span><span id="connStatus">Connecting&hellip;</span></div>
+    <div class="status-line"><span class="dot" id="actionDot"></span><span id="actionStatus">&nbsp;</span></div>
+  </div>
+
+  <div class="card" id="chooseCard">
+    <h2>Host or join?</h2>
+    <input type="text" id="nameInput" placeholder="Your name" maxlength="20">
+    <div class="row">
+      <button id="hostBtn" disabled>Host a new game</button>
+      <button id="joinShowBtn" class="secondary" disabled>Join with a code</button>
+    </div>
+    <div id="joinCodeRow" style="display:none; margin-top:12px;">
+      <input type="text" id="codeInput" class="code-input" placeholder="CODE" maxlength="4">
+      <button id="joinBtn">Join</button>
+    </div>
+  </div>
+
+  <div class="card" id="roomCard" style="display:none;">
+    <h2 id="roomHeading">Room</h2>
+    <div class="room-code-display" id="roomCodeDisplay">----</div>
+    <strong>Players in this room:</strong>
+    <ul class="players" id="playerList"><li class="empty">Nobody yet.</li></ul>
+    <span class="leave-link" id="leaveLink">Leave this room</span>
+  </div>
+
+<script>
+(function () {
+  const connDot = document.getElementById('connDot');
+  const connStatus = document.getElementById('connStatus');
+  const actionDot = document.getElementById('actionDot');
+  const actionStatus = document.getElementById('actionStatus');
+  const chooseCard = document.getElementById('chooseCard');
+  const roomCard = document.getElementById('roomCard');
+  const roomHeading = document.getElementById('roomHeading');
+  const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+  const playerList = document.getElementById('playerList');
+  const nameInput = document.getElementById('nameInput');
+  const hostBtn = document.getElementById('hostBtn');
+  const joinShowBtn = document.getElementById('joinShowBtn');
+  const joinCodeRow = document.getElementById('joinCodeRow');
+  const codeInput = document.getElementById('codeInput');
+  const joinBtn = document.getElementById('joinBtn');
+  const leaveLink = document.getElementById('leaveLink');
+
+  function setConn(state, text) {
+    connDot.className = 'dot ' + (state || '');
+    connStatus.textContent = text;
+  }
+  function setAction(state, text) {
+    actionDot.className = 'dot ' + (state || '');
+    actionStatus.textContent = text || ' ';
+  }
+
+  let ws = null;
+  let myPlayerId = null;
+  let myRoomCode = null;
+  let reconnectDelay = 1000;
+  let intentionalClose = false;
+
+  function wsUrl() {
+    const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    return proto + location.host;
+  }
+
+  function connect() {
+    setConn('pending', 'Connecting…');
+    ws = new WebSocket(wsUrl());
+
+    ws.addEventListener('open', () => {
+      reconnectDelay = 1000;
+      setConn('ok', 'Connected to server.');
+      hostBtn.disabled = false;
+      joinShowBtn.disabled = false;
+
+      const last = JSON.parse(localStorage.getItem('triviaLast') || 'null');
+      if (last && last.code && last.playerId) {
+        setAction('pending', 'Rejoining room ' + last.code + '…');
+        ws.send(JSON.stringify({ type: 'rejoin', code: last.code, playerId: last.playerId }));
+      }
+    });
+
+    ws.addEventListener('close', () => {
+      setConn('err', intentionalClose ? 'Disconnected.' : 'Connection lost — retrying…');
+      hostBtn.disabled = true;
+      joinShowBtn.disabled = true;
+      if (!intentionalClose) {
+        setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 1.6, 10000);
+      }
+    });
+
+    ws.addEventListener('error', () => {
+      setConn('err', 'Connection error.');
+    });
+
+    ws.addEventListener('message', (evt) => {
+      let msg;
+      try { msg = JSON.parse(evt.data); } catch (e) { return; }
+
+      if (msg.type === 'room') {
+        myPlayerId = msg.playerId;
+        myRoomCode = msg.code;
+        localStorage.setItem('triviaLast', JSON.stringify({ code: msg.code, playerId: msg.playerId }));
+        setAction('ok', 'Ready.');
+        chooseCard.style.display = 'none';
+        roomCard.style.display = 'block';
+        roomHeading.textContent = msg.isHost ? 'Hosting room' : 'Joined room';
+        roomCodeDisplay.textContent = msg.code;
+        renderPlayers(msg.players);
+        return;
+      }
+
+      if (msg.type === 'players') {
+        if (msg.code !== myRoomCode) return;
+        renderPlayers(msg.players);
+        return;
+      }
+
+      if (msg.type === 'error') {
+        setAction('err', msg.message || 'Something went wrong.');
+        hostBtn.disabled = false;
+        joinBtn.disabled = false;
+        return;
+      }
+    });
+  }
+
+  function renderPlayers(players) {
+    if (!players || !players.length) {
+      playerList.innerHTML = '<li class="empty">Nobody yet.</li>';
+      return;
+    }
+    playerList.innerHTML = players.map((p) => {
+      const mine = p.id === myPlayerId ? '<span class="me-tag">YOU</span>' : '';
+      const hostTag = p.isHost ? ' (host)' : '';
+      const offline = p.connected ? '' : ' offline';
+      const status = p.connected ? '' : ' — reconnecting…';
+      return '<li class="' + offline.trim() + '"><span>' + escapeHtml(p.name) + hostTag + status + '</span>' + mine + '</li>';
+    }).join('');
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function nameOrFallback() {
+    return (nameInput.value || '').trim().slice(0, 20) || 'Player';
+  }
+
+  hostBtn.addEventListener('click', () => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    hostBtn.disabled = true;
+    setAction('pending', 'Creating room…');
+    ws.send(JSON.stringify({ type: 'host', name: nameOrFallback() }));
+    setTimeout(() => { hostBtn.disabled = false; }, 1500);
+  });
+
+  joinShowBtn.addEventListener('click', () => {
+    joinCodeRow.style.display = joinCodeRow.style.display === 'none' ? 'flex' : 'none';
+    codeInput.focus();
+  });
+
+  joinBtn.addEventListener('click', () => {
+    const code = codeInput.value.trim().toUpperCase();
+    if (code.length !== 4) {
+      setAction('err', 'Enter the 4-letter code first.');
+      return;
+    }
+    if (ws.readyState !== WebSocket.OPEN) return;
+    joinBtn.disabled = true;
+    setAction('pending', 'Joining room ' + code + '…');
+    ws.send(JSON.stringify({ type: 'join', code, name: nameOrFallback() }));
+    setTimeout(() => { joinBtn.disabled = false; }, 1500);
+  });
+
+  leaveLink.addEventListener('click', () => {
+    localStorage.removeItem('triviaLast');
+    myPlayerId = null;
+    myRoomCode = null;
+    roomCard.style.display = 'none';
+    chooseCard.style.display = 'block';
+    setAction('', ' ');
+  });
+
+  connect();
+})();
+</script>
+</body>
+</html>
