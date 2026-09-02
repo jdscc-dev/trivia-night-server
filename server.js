@@ -36,7 +36,20 @@ const MAIN_QUESTIONS = [
   { cat: 'Geography', diff: 'easy', q: 'The Sahara Desert is located on which continent?', choices: ['Asia', 'Africa', 'Australia', 'South America'], correct: 1 },
 ];
 
+// True/false speed round, ported from the single-device build's LIGHTNING set.
+const LIGHTNING_ITEMS = [
+  { s: 'The Great Wall of China is visible from space with the naked eye.', truth: false },
+  { s: 'Octopuses have three hearts.', truth: true },
+  { s: 'Bats are completely blind.', truth: false },
+  { s: 'The Eiffel Tower grows taller in summer as the metal expands.', truth: true },
+  { s: 'A group of flamingos is called a "flamboyance."', truth: true },
+  { s: 'Sharks existed before trees.', truth: true },
+  { s: 'Mount Everest is the tallest mountain on Earth measured from base to peak.', truth: false },
+  { s: 'Honey never spoils.', truth: true },
+];
+
 const QUESTION_TIME_MS = 18000; // matches the original build's MAIN_TIME (18s)
+const LIGHTNING_TIME_MS = 4000; // matches the original build's LIGHTNING_TIME (4s)
 
 // Wheel-spin transition timing — matches the single-device build so the
 // pacing feels the same. The server holds the game in the 'wheel' phase for
@@ -47,6 +60,10 @@ const WHEEL_LAND_PAUSE_MS = 100;
 const WHEEL_TRANSITION_TAIL_MS = 1100;
 const WHEEL_TOTAL_MS = WHEEL_SPIN_MS + WHEEL_LAND_PAUSE_MS + WHEEL_TRANSITION_TAIL_MS;
 
+// How long the one-time "LIGHTNING ROUND" title card stays up before the
+// first true/false statement appears.
+const ROUND_INTRO_MS = 2600;
+
 function shuffle(arr) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -56,11 +73,25 @@ function shuffle(arr) {
   return a;
 }
 
+// Normalize the true/false items into the same {cat, q, choices, correct}
+// shape the main round already uses, so every downstream function (wheel
+// excluded) can treat both rounds identically.
+function buildLightningSet() {
+  return shuffle(LIGHTNING_ITEMS).map((item) => ({
+    cat: 'Lightning',
+    q: item.s,
+    choices: ['True', 'False'],
+    correct: item.truth ? 0 : 1,
+  }));
+}
+
 // In-memory room state.
 // code -> {
 //   players: Map(playerId -> { id, name, isHost, ws, score }),
-//   phase: 'lobby' | 'wheel' | 'question' | 'reveal' | 'ended',
+//   phase: 'lobby' | 'wheel' | 'question' | 'reveal' | 'roundIntro' | 'ended',
+//   round: 'main' | 'lightning'  (which set questionIndex currently indexes into)
 //   mainSet: [question, ...]  (this room's shuffled order, set at startGame)
+//   lightningSet: [question, ...]  (same shape as mainSet, set at startGame)
 //   questionIndex: number,
 //   answers: Map(playerId -> choiceIndex),
 //   timer: Timeout | null,
@@ -108,9 +139,18 @@ function broadcastPlayers(code) {
   broadcast(code, { type: 'players', code, players: roomSnapshot(rooms.get(code)) });
 }
 
+function activeSet(room) {
+  return room.round === 'lightning' ? room.lightningSet : room.mainSet;
+}
+
+function roundTimeMs(room) {
+  return room.round === 'lightning' ? LIGHTNING_TIME_MS : QUESTION_TIME_MS;
+}
+
 function publicQuestion(room, index) {
-  const q = room.mainSet[index];
-  return { index, total: room.mainSet.length, cat: q.cat, q: q.q, choices: q.choices, timeMs: QUESTION_TIME_MS };
+  const set = activeSet(room);
+  const q = set[index];
+  return { index, total: set.length, cat: q.cat, q: q.q, choices: q.choices, timeMs: roundTimeMs(room) };
 }
 
 function answeredCount(room) {
@@ -121,7 +161,8 @@ function answeredCount(room) {
 // always lands on the real category of the upcoming question. Every client
 // animates its own spin locally; the server just holds the game here for
 // WHEEL_TOTAL_MS so everyone lands at roughly the same moment, then reveals
-// the actual question.
+// the actual question. Only used for the Switchagories (main) round — the
+// Lightning round moves straight from one statement to the next.
 function startWheel(code, index) {
   const room = rooms.get(code);
   if (!room) return;
@@ -131,6 +172,18 @@ function startWheel(code, index) {
   broadcast(code, { type: 'wheel', cat: target.cat, index, total: room.mainSet.length });
   clearTimeout(room.timer);
   room.timer = setTimeout(() => startQuestion(code, index), WHEEL_TOTAL_MS);
+}
+
+// One-time title card shown before the Lightning round begins (no per-item
+// wheel spin — the original build only transitions once for this round).
+function startLightningRound(code) {
+  const room = rooms.get(code);
+  if (!room) return;
+  room.round = 'lightning';
+  room.phase = 'roundIntro';
+  broadcast(code, { type: 'roundIntro', title: 'LIGHTNING ROUND', subtitle: 'True or false — answer fast!' });
+  clearTimeout(room.timer);
+  room.timer = setTimeout(() => startQuestion(code, 0), ROUND_INTRO_MS);
 }
 
 function startQuestion(code, index) {
@@ -146,7 +199,7 @@ function startQuestion(code, index) {
     playerCount: room.players.size,
   });
   clearTimeout(room.timer);
-  room.timer = setTimeout(() => revealAnswer(code), QUESTION_TIME_MS);
+  room.timer = setTimeout(() => revealAnswer(code), roundTimeMs(room));
 }
 
 function revealAnswer(code) {
@@ -155,7 +208,8 @@ function revealAnswer(code) {
   clearTimeout(room.timer);
   room.phase = 'reveal';
 
-  const q = room.mainSet[room.questionIndex];
+  const set = activeSet(room);
+  const q = set[room.questionIndex];
   const answerMap = {};
   for (const [playerId, choice] of room.answers.entries()) {
     answerMap[playerId] = choice;
@@ -165,7 +219,11 @@ function revealAnswer(code) {
     }
   }
 
-  const isLast = room.questionIndex >= room.mainSet.length - 1;
+  const isLastInRound = room.questionIndex >= set.length - 1;
+  const nextLabel = room.round === 'main'
+    ? (isLastInRound ? 'Start Lightning Round' : 'Next Question')
+    : (isLastInRound ? 'See Final Scores' : 'Next Question');
+
   broadcast(code, {
     type: 'reveal',
     index: room.questionIndex,
@@ -173,7 +231,7 @@ function revealAnswer(code) {
     correct: q.correct,
     answers: answerMap,
     players: roomSnapshot(room),
-    isLast,
+    nextLabel,
   });
 }
 
@@ -193,7 +251,7 @@ wss.on('connection', (ws) => {
       const name = String(msg.name || 'Player').slice(0, 20) || 'Player';
       const code = genCode();
       const playerId = genPlayerId();
-      const room = { players: new Map(), phase: 'lobby', mainSet: [], questionIndex: -1, answers: new Map(), timer: null };
+      const room = { players: new Map(), phase: 'lobby', round: 'main', mainSet: [], lightningSet: [], questionIndex: -1, answers: new Map(), timer: null };
       room.players.set(playerId, { id: playerId, name, isHost: true, ws, score: 0 });
       rooms.set(code, room);
       myRoomCode = code;
@@ -258,7 +316,9 @@ wss.on('connection', (ws) => {
       if (!room || !myPlayerId) return;
       const player = room.players.get(myPlayerId);
       if (!player || !player.isHost || room.phase !== 'lobby') return;
+      room.round = 'main';
       room.mainSet = shuffle(MAIN_QUESTIONS);
+      room.lightningSet = buildLightningSet();
       startWheel(myRoomCode, 0);
       return;
     }
@@ -269,7 +329,8 @@ wss.on('connection', (ws) => {
       if (room.phase !== 'question') return;
       if (room.answers.has(myPlayerId)) return; // one answer per question
       const choice = Number(msg.choice);
-      if (!Number.isInteger(choice) || choice < 0 || choice > 3) return;
+      const numChoices = activeSet(room)[room.questionIndex].choices.length;
+      if (!Number.isInteger(choice) || choice < 0 || choice >= numChoices) return;
       room.answers.set(myPlayerId, choice);
       broadcast(myRoomCode, {
         type: 'answerCount',
@@ -288,11 +349,20 @@ wss.on('connection', (ws) => {
       const player = room.players.get(myPlayerId);
       if (!player || !player.isHost || room.phase !== 'reveal') return;
       const next = room.questionIndex + 1;
-      if (next >= room.mainSet.length) {
-        room.phase = 'ended';
-        broadcast(myRoomCode, { type: 'ended', players: roomSnapshot(room) });
+      if (room.round === 'main') {
+        if (next >= room.mainSet.length) {
+          startLightningRound(myRoomCode);
+        } else {
+          startWheel(myRoomCode, next);
+        }
       } else {
-        startWheel(myRoomCode, next);
+        if (next >= room.lightningSet.length) {
+          room.phase = 'ended';
+          clearTimeout(room.timer);
+          broadcast(myRoomCode, { type: 'ended', players: roomSnapshot(room) });
+        } else {
+          startQuestion(myRoomCode, next);
+        }
       }
       return;
     }

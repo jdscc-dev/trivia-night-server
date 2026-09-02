@@ -296,6 +296,11 @@
     <div id="wheelCatLabel"></div>
   </div>
 
+  <div class="card" id="roundIntroCard" style="display:none; text-align:center;">
+    <h2 id="roundIntroTitle">LIGHTNING ROUND</h2>
+    <p class="sub" id="roundIntroSubtitle">True or false &mdash; answer fast!</p>
+  </div>
+
   <div class="card" id="questionCard" style="display:none;">
     <div class="q-progress" id="qProgress">Question 1 of 4</div>
     <div class="q-category" id="qCategory"></div>
@@ -348,6 +353,10 @@
   const wheelGlow = document.getElementById('wheelGlow');
   const wheelCatLabel = document.getElementById('wheelCatLabel');
 
+  const roundIntroCard = document.getElementById('roundIntroCard');
+  const roundIntroTitle = document.getElementById('roundIntroTitle');
+  const roundIntroSubtitle = document.getElementById('roundIntroSubtitle');
+
   const questionCard = document.getElementById('questionCard');
   const qProgress = document.getElementById('qProgress');
   const qCategory = document.getElementById('qCategory');
@@ -378,7 +387,7 @@
     actionStatus.textContent = text || ' ';
   }
   function showOnly(card) {
-    [chooseCard, roomCard, wheelCard, questionCard, revealCard, endedCard].forEach((c) => {
+    [chooseCard, roomCard, wheelCard, roundIntroCard, questionCard, revealCard, endedCard].forEach((c) => {
       c.style.display = c === card ? 'block' : 'none';
     });
   }
@@ -399,6 +408,7 @@
   let wheelSpinToken = 0;
 
   function categoryIcon(cat) {
+    if (cat === 'Lightning') return '⚡';
     const found = CATEGORY_WHEEL.find((w) => w.cat === cat);
     return found ? found.icon : '';
   }
@@ -544,6 +554,13 @@
         return;
       }
 
+      if (msg.type === 'roundIntro') {
+        roundIntroTitle.textContent = msg.title || '';
+        roundIntroSubtitle.textContent = msg.subtitle || '';
+        showOnly(roundIntroCard);
+        return;
+      }
+
       if (msg.type === 'question') {
         myAnswer = null;
         renderQuestion(msg);
@@ -669,7 +686,7 @@
 
     nextQuestionBtn.style.display = iAmHost ? 'block' : 'none';
     waitingForHostReveal.style.display = iAmHost ? 'none' : 'block';
-    nextQuestionBtn.textContent = msg.isLast ? 'See Final Scores' : 'Next Question';
+    nextQuestionBtn.textContent = msg.nextLabel || 'Next Question';
   }
 
   function renderScoreboard(el, players) {
