@@ -403,8 +403,11 @@ const WHEEL_LAND_PAUSE_MS = 100;
 // Tail padded by the client's ~420ms bounce-back settle (spin past the
 // landing wedge, then spring back to it) so that finishes before the
 // screen advances, on top of the original 1100ms admire-the-landed-wheel
-// beat.
-const WHEEL_TRANSITION_TAIL_MS = 1520;
+// beat. This got doubled once already (to 6440ms) for a longer "admire the
+// landed wheel" beat; this round, that same pause was called out as too
+// long, so it's cut by 50% from that doubled value (not all the way back
+// to the original 1520ms).
+const WHEEL_TRANSITION_TAIL_MS = 3220;
 const WHEEL_TOTAL_MS = WHEEL_SPIN_MS + WHEEL_LAND_PAUSE_MS + WHEEL_TRANSITION_TAIL_MS;
 
 // How long the "Up next: CATEGORY" tile (with its photo background) stays up
@@ -418,29 +421,34 @@ const CATEGORY_ANNOUNCE_MS = 1800;
 // build played this BEFORE its (partly simulated) ready check; in real
 // multiplayer the meaningful "everyone's actually here" moment is once
 // every real player has pressed ready, so that's when this plays instead.
-// Duration scales with player count so the last avatar's bell always lands
-// before the title, whether it's a 2-player room or an 8-player one.
-const ROLLCALL_FANFARE_START_DELAY_MS = 300;
-const ROLLCALL_FANFARE_STAGGER_MS = 380;
-const ROLLCALL_FANFARE_TITLE_HOLD_MS = 1400;
-function rollcallFanfareMs(playerCount) {
-  return ROLLCALL_FANFARE_START_DELAY_MS + Math.max(0, playerCount - 1) * ROLLCALL_FANFARE_STAGGER_MS + ROLLCALL_FANFARE_TITLE_HOLD_MS;
+// Fixed length regardless of player count — the client spreads the
+// per-player bell reveals evenly across whatever total it's given, so a
+// 2-player room and an 8-player room both get the full length, just with
+// wider or narrower gaps between each bell. Went 8s -> 16s -> back down to
+// 12s per successive requests.
+const ROLLCALL_FANFARE_MS = 12000;
+function rollcallFanfareMs() {
+  return ROLLCALL_FANFARE_MS;
 }
 
-// How long the one-time "LIGHTNING ROUND" title card stays up before the
-// first true/false statement appears.
-const ROUND_INTRO_MS = 2600;
+// One-time round-intro title cards, each with their own independent
+// duration (they used to share a single ROUND_INTRO_MS, but each has since
+// been asked to change on its own): "SWITCHAGORIES" before the very first
+// wheel spin, "LIGHTNING ROUND" before the first true/false statement, and
+// "DAILY DOUBLE" (with its spotlight effect) before the first wager screen.
+const SWITCHAGORIES_ROUND_INTRO_MS = 5200; // doubled from the original 2600
+const LIGHTNING_ROUND_INTRO_MS = 5200; // doubled from the original 2600
+const DD_ROUND_INTRO_MS = 5200; // doubled from the original 2600
 
 // How long the "FINAL RESULTS" drum-roll fanfare plays before the scoreboard
 // actually appears. Matches the single-device build's results transition.
 const RESULTS_FANFARE_MS = 4200;
 
 // How long a reveal screen stays up before the game auto-advances on its
-// own — no host click required. Switchagories (main round) got bumped to
-// 6s so there's more time to read the correct answer and the scoreboard
-// pop before the wheel spins again; Lightning stays at the original 3s to
-// keep that round feeling fast-paced, and so does Daily Double's reveal.
-const REVEAL_HOLD_MS_MAIN = 6000;
+// own — no host click required. Switchagories (main round) dropped from 6s
+// to 5s; Lightning stays at the original 3s to keep that round feeling
+// fast-paced, and so does Daily Double's reveal.
+const REVEAL_HOLD_MS_MAIN = 5000;
 const REVEAL_HOLD_MS_LIGHTNING = 3000;
 const DD_REVEAL_HOLD_MS = 3000;
 
@@ -475,14 +483,42 @@ function shuffleChoices(item) {
 // 12-question "long" game sees each category exactly twice, before the
 // draw order itself is reshuffled so games don't always play the same
 // wheel-spin sequence.
-function pickMainSet(pool, count) {
+//
+// `usedByCategory` is the room's own memory of which questions it has
+// already shown, keyed by category (Map<category, Array<question text>>,
+// oldest first — a FIFO, not a Set), and persists across "Play Again"
+// within the same room. Per-game shuffling alone is genuinely random, but
+// with a ~40-question pool per category, a specific question repeating
+// within a handful of games is more common than it feels like it should be
+// (birthday-paradox territory) — tracking history means nothing repeats
+// until nearly every question in a category has been shown, then the
+// oldest entries age out one at a time to make room for the next draw.
+// That last part matters: an earlier version of this wiped a category's
+// whole history at once when it ran low, which could — by pure bad luck
+// right at that reset — let a question reappear on the very next game.
+// Aging out the single oldest entry at a time instead means whatever was
+// JUST shown always stays protected, so a repeat can never land sooner
+// than "almost the entire pool has cycled."
+function pickMainSet(pool, count, usedByCategory) {
   const byCat = {};
   pool.forEach((q) => {
     if (!byCat[q.cat]) byCat[q.cat] = [];
     byCat[q.cat].push(q);
   });
   const cats = shuffle(Object.keys(byCat));
-  cats.forEach((c) => { byCat[c] = shuffle(byCat[c]); });
+  // Leave at least this many unused questions per category so a draw never
+  // runs dry mid-round-robin (a small margin over the per-category share,
+  // since round-robin can hand one category an extra pick when count isn't
+  // evenly divisible by the number of categories).
+  const roughlyNeeded = Math.ceil(count / cats.length) + 1;
+  cats.forEach((c) => {
+    if (!usedByCategory[c]) usedByCategory[c] = [];
+    const history = usedByCategory[c];
+    const maxHistory = Math.max(0, byCat[c].length - roughlyNeeded);
+    while (history.length > maxHistory) history.shift();
+    const historySet = new Set(history);
+    byCat[c] = shuffle(byCat[c].filter((q) => !historySet.has(q.q)));
+  });
   const picked = [];
   let round = 0;
   while (picked.length < count) {
@@ -497,25 +533,53 @@ function pickMainSet(pool, count) {
     if (!addedThisRound) break; // pool exhausted (shouldn't happen at our sizes)
     round++;
   }
+  picked.forEach((q) => { usedByCategory[q.cat].push(q.q); });
   return shuffle(picked);
 }
 
 // Draw `count` Daily Double questions from the same pool as the main round
 // (filtered to the host's selected categories), excluding whatever was
 // already handed to this game's mainSet so nobody sees the same question
-// twice in one sitting. Category balance doesn't matter here — it's only
-// ever 1 or 2 questions — so a plain random draw is enough.
-function pickDailyDoubleSet(pool, mainSet, count) {
-  const usedQuestions = new Set(mainSet.map((q) => q.q));
-  const remaining = pool.filter((q) => !usedQuestions.has(q.q));
-  return shuffle(remaining).slice(0, count);
+// twice in one sitting, AND whatever this room has already shown recently
+// as a main or Daily Double question (the same usedByCategory history
+// pickMainSet maintains) so Daily Double gets the same across-games
+// freshness. Category balance doesn't matter here — it's only ever 1 or 2
+// questions — so a plain random draw from whatever's left is enough; the
+// history itself is trimmed back down to size on the next pickMainSet call.
+function pickDailyDoubleSet(pool, mainSet, count, usedByCategory) {
+  const usedThisGame = new Set(mainSet.map((q) => q.q));
+  let remaining = pool.filter((q) => {
+    if (usedThisGame.has(q.q)) return false;
+    const history = usedByCategory[q.cat];
+    return !history || !history.includes(q.q);
+  });
+  if (remaining.length < count) {
+    // Safety net for a narrow category selection where history has eaten
+    // through nearly the whole pool — fall back to anything not already
+    // used in this specific game rather than coming up short.
+    remaining = pool.filter((q) => !usedThisGame.has(q.q));
+  }
+  const picked = shuffle(remaining).slice(0, count);
+  picked.forEach((q) => {
+    if (!usedByCategory[q.cat]) usedByCategory[q.cat] = [];
+    usedByCategory[q.cat].push(q.q);
+  });
+  return picked;
 }
 
 // Normalize the true/false items into the same {cat, q, choices, correct}
 // shape the main round already uses, so every downstream function (wheel
-// excluded) can treat both rounds identically.
-function buildLightningSet() {
-  return shuffle(LIGHTNING_ITEMS).map((item) => ({
+// excluded) can treat both rounds identically. `usedLightning` is the same
+// kind of cross-game FIFO memory as usedByCategory above, keyed by
+// statement text, so Lightning gets the same no-early-repeats behavior.
+function buildLightningSet(count, usedLightning) {
+  const maxHistory = Math.max(0, LIGHTNING_ITEMS.length - count);
+  while (usedLightning.length > maxHistory) usedLightning.shift();
+  const historySet = new Set(usedLightning);
+  const available = LIGHTNING_ITEMS.filter((item) => !historySet.has(item.s));
+  const picked = shuffle(available).slice(0, count);
+  picked.forEach((item) => usedLightning.push(item.s));
+  return picked.map((item) => ({
     cat: 'Lightning',
     q: item.s,
     choices: ['True', 'False'],
@@ -609,7 +673,10 @@ function roundTimeMs(room) {
 function publicQuestion(room, index) {
   const set = activeSet(room);
   const q = set[index];
-  return { index, total: set.length, cat: q.cat, q: q.q, choices: q.choices, timeMs: roundTimeMs(room) };
+  // Includes live scores (players) so the question screen — not just
+  // reveal — can keep the scoreboard visible, on a fresh broadcast or a
+  // reconnect alike.
+  return { index, total: set.length, cat: q.cat, q: q.q, choices: q.choices, timeMs: roundTimeMs(room), players: roomSnapshot(room) };
 }
 
 function answeredCount(room) {
@@ -695,7 +762,7 @@ function startSwitchagoriesIntro(code) {
     icon: '🎡',
   });
   clearTimeout(room.timer);
-  room.timer = setTimeout(() => startWheel(code, 0), ROUND_INTRO_MS);
+  room.timer = setTimeout(() => startWheel(code, 0), SWITCHAGORIES_ROUND_INTRO_MS);
 }
 
 // One-time title card shown before the Lightning round begins (no per-item
@@ -713,7 +780,7 @@ function startLightningRound(code) {
     icon: '⚡',
   });
   clearTimeout(room.timer);
-  room.timer = setTimeout(() => startQuestion(code, 0), ROUND_INTRO_MS);
+  room.timer = setTimeout(() => startQuestion(code, 0), LIGHTNING_ROUND_INTRO_MS);
 }
 
 function startQuestion(code, index) {
@@ -818,7 +885,7 @@ function startDailyDoubleRoundIntro(code) {
     icon: '💰',
   });
   clearTimeout(room.timer);
-  room.timer = setTimeout(() => startDailyDoubleItem(code, 0), ROUND_INTRO_MS);
+  room.timer = setTimeout(() => startDailyDoubleItem(code, 0), DD_ROUND_INTRO_MS);
 }
 
 // Daily Double is untimed and personal: every player wagers off their own
@@ -935,6 +1002,13 @@ wss.on('connection', (ws) => {
         ddCompleted: new Map(),
         readyPlayers: new Set(),
         timer: null,
+        // Cross-game "already shown" memory for this room — see
+        // pickMainSet/pickDailyDoubleSet/buildLightningSet. Persists across
+        // Play Again so questions don't repeat until each pool cycles.
+        // Both are FIFOs (oldest-shown-first), not Sets — see the long
+        // comment above pickMainSet for why that distinction matters.
+        usedByCategory: {},
+        usedLightning: [],
       };
       room.players.set(playerId, { id: playerId, name, isHost: true, ws, score: 0, lifelineUsed: false, avatar: avatarFor(msg.avatarIndex) });
       rooms.set(code, room);
@@ -1001,7 +1075,7 @@ wss.on('connection', (ws) => {
       if (room.phase === 'ddWager' && !room.ddCompleted.has(playerId)) {
         if (room.ddWagers.has(playerId)) {
           const item = room.dailyDoubleSet[room.questionIndex];
-          send(ws, { type: 'ddQuestion', q: item.q, choices: item.choices, wager: room.ddWagers.get(playerId) });
+          send(ws, { type: 'ddQuestion', q: item.q, choices: item.choices, wager: room.ddWagers.get(playerId), players: roomSnapshot(room) });
         } else {
           send(ws, { type: 'ddWager', index: room.questionIndex, total: room.dailyDoubleSet.length, options: wagerOptions(player.score) });
         }
@@ -1033,9 +1107,14 @@ wss.on('connection', (ws) => {
       // Both Switchagories and Daily Double draw from whichever categories
       // the host left selected (normalizeSettings guarantees at least one).
       const categoryPool = MAIN_QUESTIONS.filter((q) => room.settings.categories.includes(q.cat));
-      room.mainSet = pickMainSet(categoryPool, cfg.numMain).map(shuffleChoices);
-      room.lightningSet = buildLightningSet().slice(0, cfg.numLightning).map(shuffleChoices);
-      room.dailyDoubleSet = pickDailyDoubleSet(categoryPool, room.mainSet, cfg.numDD).map(shuffleChoices);
+      room.mainSet = pickMainSet(categoryPool, cfg.numMain, room.usedByCategory).map(shuffleChoices);
+      // Lightning items are always True/False in that fixed order — unlike
+      // Switchagories' multiple-choice questions, there's no "always lands
+      // in the same spot" bias to fix here, and shuffling was actually
+      // making it swap sides from item to item, which read as confusing
+      // rather than fair. Left un-shuffled on purpose (per request).
+      room.lightningSet = buildLightningSet(cfg.numLightning, room.usedLightning);
+      room.dailyDoubleSet = pickDailyDoubleSet(categoryPool, room.mainSet, cfg.numDD, room.usedByCategory).map(shuffleChoices);
       startRollCall(myRoomCode);
       return;
     }
@@ -1089,6 +1168,22 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // Lets the host cut a game short from any in-progress screen and jump
+    // straight to final results — same drum-roll-into-scoreboard flow as a
+    // game that finishes normally, just triggered early. Scores are
+    // whatever they currently are; nothing needs to be undone or
+    // recomputed, since results are always read live off each player's
+    // running score.
+    if (msg.type === 'endGame') {
+      const room = rooms.get(myRoomCode);
+      if (!room || !myPlayerId) return;
+      const player = room.players.get(myPlayerId);
+      if (!player || !player.isHost) return;
+      if (room.phase === 'lobby' || room.phase === 'results' || room.phase === 'ended') return;
+      startResultsFanfare(myRoomCode);
+      return;
+    }
+
     if (msg.type === 'playAgain') {
       const room = rooms.get(myRoomCode);
       if (!room || !myPlayerId) return;
@@ -1120,7 +1215,7 @@ wss.on('connection', (ws) => {
       if (!valid.includes(amount)) return;
       room.ddWagers.set(myPlayerId, amount);
       const item = room.dailyDoubleSet[room.questionIndex];
-      send(ws, { type: 'ddQuestion', q: item.q, choices: item.choices, wager: amount });
+      send(ws, { type: 'ddQuestion', q: item.q, choices: item.choices, wager: amount, players: roomSnapshot(room) });
       return;
     }
 

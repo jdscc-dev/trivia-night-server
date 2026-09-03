@@ -75,6 +75,21 @@
     font-weight: 600;
     margin-top: 10px;
   }
+  #endGameBtn {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    z-index: 50;
+    width: auto;
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid var(--bad);
+    color: var(--bad);
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    border-radius: 8px;
+    cursor: pointer;
+  }
   .status-line { display: flex; align-items: center; gap: 8px; font-size: 0.92rem; margin: 6px 0; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
   .dot.ok { background: var(--good); }
@@ -368,6 +383,45 @@
   .reveal-correct-note { font-size: 0.9rem; margin-bottom: 12px; }
   .reveal-correct-note.me-right { color: var(--good); }
   .reveal-correct-note.me-wrong { color: var(--bad); }
+
+  /* ---- "Next question" / "Next Daily Double" countdown badge, ported
+     from the single-device build: a glowing circular number that pops on
+     every tick, replacing what used to be plain "Next question in 4…"
+     text — more noticeable and a bit more suspenseful. ---- */
+  .countdown-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 16px 0 0;
+  }
+  .countdown-label {
+    font-size: 0.72rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .countdown-number {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 3px solid var(--accent);
+    box-shadow: 0 0 22px rgba(240, 166, 58, 0.35);
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 1.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .countdown-number.tick { animation: countdownTick 0.9s ease-out; }
+  @keyframes countdownTick {
+    0% { transform: scale(1.45); opacity: 0.35; }
+    55% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
   .q-category {
     display: inline-block;
     background: #14151d;
@@ -849,6 +903,13 @@
 </head>
 <body>
 
+  <!-- Host-only "end the game right now" control. Lives outside the card
+       stack (fixed position) so it's reachable from literally any
+       in-progress screen — question, reveal, wheel, Daily Double, etc. —
+       without needing its own copy pasted onto every card. showOnly()
+       toggles it on/off based on whose turn it is and what phase we're in. -->
+  <button id="endGameBtn" type="button" style="display:none;">⏹ End Game</button>
+
   <h1>Trivia Night &mdash; Multiplayer Test</h1>
   <p class="sub">Own server, own protocol. Proves questions/answers/scoring sync live across devices.</p>
 
@@ -1028,6 +1089,8 @@
     <div class="choices" id="choicesList"></div>
     <button class="lifeline-btn" id="lifelineBtn" style="display:none;">&#9986;&#65039; Use 50/50 (1 left)</button>
     <div class="answered-count" id="answeredCountText"></div>
+    <strong style="display:block; margin: 16px 0 8px;">Scoreboard:</strong>
+    <ul class="scoreboard" id="scoreboardListQ"></ul>
   </div>
 
   <div class="card" id="revealCard" style="display:none;">
@@ -1042,7 +1105,10 @@
     <div class="choices" id="revealChoicesList"></div>
     <strong style="display:block; margin: 16px 0 8px;">Scoreboard:</strong>
     <ul class="scoreboard" id="scoreboardList"></ul>
-    <p class="sub" id="revealHoldText" style="margin: 10px 0 0; text-align:center;">Next question in 4&hellip;</p>
+    <div class="countdown-block" id="revealHoldText">
+      <span class="countdown-label" id="revealHoldLabel">Next question in</span>
+      <span class="countdown-number" id="revealHoldNumber">4</span>
+    </div>
   </div>
 
   <div class="card" id="ddWagerCard" style="display:none;">
@@ -1059,6 +1125,8 @@
     <div class="q-text" id="ddQText">Question text</div>
     <div class="choices" id="ddChoicesList"></div>
     <div class="answered-count" id="ddPersonalFeedback"></div>
+    <strong style="display:block; margin: 16px 0 8px;">Scoreboard:</strong>
+    <ul class="scoreboard" id="ddScoreboardListQ"></ul>
   </div>
 
   <div class="card" id="ddRevealCard" style="display:none;">
@@ -1070,7 +1138,10 @@
     <ul class="scoreboard" id="ddResultsList"></ul>
     <strong style="display:block; margin: 16px 0 8px;">Scoreboard:</strong>
     <ul class="scoreboard" id="ddScoreboardList"></ul>
-    <p class="sub" id="ddRevealHoldText" style="margin: 10px 0 0; text-align:center;">Next Daily Double in 5&hellip;</p>
+    <div class="countdown-block" id="ddRevealHoldText">
+      <span class="countdown-label" id="ddRevealHoldLabel">Next Daily Double in</span>
+      <span class="countdown-number" id="ddRevealHoldNumber">5</span>
+    </div>
   </div>
 
   <div class="card" id="endedCard" style="display:none;">
@@ -1101,6 +1172,7 @@
   const connStatus = document.getElementById('connStatus');
   const actionDot = document.getElementById('actionDot');
   const actionStatus = document.getElementById('actionStatus');
+  const endGameBtn = document.getElementById('endGameBtn');
   const chooseCard = document.getElementById('chooseCard');
   const roomCard = document.getElementById('roomCard');
   const roomHeading = document.getElementById('roomHeading');
@@ -1155,6 +1227,7 @@
   const lifelineBtn = document.getElementById('lifelineBtn');
   const streakBadgeQ = document.getElementById('streakBadgeQ');
   const streakCountQ = document.getElementById('streakCountQ');
+  const scoreboardListQ = document.getElementById('scoreboardListQ');
 
   const revealCard = document.getElementById('revealCard');
   const roundBannerR = document.getElementById('roundBannerR');
@@ -1180,6 +1253,7 @@
   const ddQText = document.getElementById('ddQText');
   const ddChoicesList = document.getElementById('ddChoicesList');
   const ddPersonalFeedback = document.getElementById('ddPersonalFeedback');
+  const ddScoreboardListQ = document.getElementById('ddScoreboardListQ');
 
   const ddRevealCard = document.getElementById('ddRevealCard');
   const roundBannerDdR = document.getElementById('roundBannerDdR');
@@ -1208,6 +1282,11 @@
     [chooseCard, roomCard, rollcallCard, rollcallFanfareCard, wheelCard, categoryAnnounceCard, roundIntroCard, questionCard, revealCard, ddWagerCard, ddQuestionCard, ddRevealCard, endedCard].forEach((c) => {
       c.style.display = c === card ? 'block' : 'none';
     });
+    // Host-only "End Game" control: visible on any screen once a game is
+    // actually in progress (not the pre-game lobby, not the post-game
+    // results), so the host can cut it short from wherever they are.
+    const inGame = card !== chooseCard && card !== roomCard && card !== endedCard;
+    endGameBtn.style.display = (iAmHost && inGame) ? 'block' : 'none';
   }
 
   // --- Audio ---------------------------------------------------------
@@ -2062,6 +2141,12 @@
         roundIntroCard.dataset.theme = 'results';
         showOnly(roundIntroCard);
         Sound.stopAllMusic();
+        // Results can now arrive early too (the host's End Game control), so
+        // this might be firing mid-Daily-Double with the heartbeat still
+        // running — stop it explicitly rather than relying on the
+        // ddRoundReveal step that a normal end-of-round would have passed
+        // through first.
+        Sound.stopHeartbeat();
         playDrumRoll();
         return;
       }
@@ -2296,20 +2381,30 @@
   // --- Auto-advance countdown shown on reveal screens (no host click
   // needed — the server holds each reveal up for msg.holdMs, then moves
   // the game on by itself; this just displays the matching countdown). ---
+  // `el` is the .countdown-block container; the number badge pops on every
+  // tick, ported from the single-device build's countdown widget.
   function startHoldCountdown(el, holdMs, label) {
     clearInterval(holdCountdownInterval);
     if (!el) return;
+    const labelEl = el.querySelector('.countdown-label');
+    const numEl = el.querySelector('.countdown-number');
     let secs = Math.max(1, Math.ceil(holdMs / 1000));
-    const render = () => { el.textContent = (label || 'Next') + ' in ' + secs + '…'; };
-    render();
+    if (labelEl) labelEl.textContent = (label || 'Next') + ' in';
+    const setNumber = (n) => {
+      if (!numEl) return;
+      numEl.textContent = n;
+      numEl.classList.remove('tick');
+      void numEl.offsetWidth; // restart the pop animation on every tick
+      numEl.classList.add('tick');
+    };
+    setNumber(secs);
     holdCountdownInterval = setInterval(() => {
       secs--;
       if (secs <= 0) {
         clearInterval(holdCountdownInterval);
-        el.textContent = (label || 'Next') + '…';
         return;
       }
-      render();
+      setNumber(secs);
     }, 1000);
   }
 
@@ -2329,6 +2424,10 @@
     });
 
     renderStreakBadge(streakBadgeQ, streakCountQ, myStreak);
+
+    // Live scoreboard, visible while the question's up too — not just on
+    // reveal — so scores/updates stay on screen throughout.
+    if (q.players && q.players.length) renderScoreboard(scoreboardListQ, q.players);
 
     // 50/50 lifeline: Switchagories only, one use per game per player.
     if (q.cat !== 'Lightning') {
@@ -2650,6 +2749,8 @@
     Array.from(ddChoicesList.querySelectorAll('.choice-btn')).forEach((btn) => {
       btn.addEventListener('click', () => submitDdAnswer(Number(btn.dataset.i)));
     });
+    // Live scoreboard, visible while this Daily Double question's up too.
+    if (msg.players && msg.players.length) renderScoreboard(ddScoreboardListQ, msg.players);
   }
 
   function submitDdAnswer(choice) {
@@ -2745,6 +2846,15 @@
   }
   leaveLink.addEventListener('click', leaveRoom);
   leaveLinkEnded.addEventListener('click', leaveRoom);
+
+  // Host-only: end the game right now from wherever it currently is and
+  // jump straight to final results, same as if the last question had just
+  // been played out normally.
+  endGameBtn.addEventListener('click', () => {
+    if (!iAmHost) return;
+    if (!confirm('End the game now for everyone and show final results?')) return;
+    ws.send(JSON.stringify({ type: 'endGame' }));
+  });
 
   playAgainBtn.addEventListener('click', () => {
     if (ws.readyState !== WebSocket.OPEN) return;
