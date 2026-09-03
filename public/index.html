@@ -59,6 +59,12 @@
   .round-banner-main { background: linear-gradient(90deg, var(--tile-1), #2c56b8); color: #fff; }
   .round-banner-lightning { background: linear-gradient(90deg, var(--bad), #b83e3e); color: #fff; }
   .round-banner-dd { background: linear-gradient(90deg, var(--accent), #c98527); color: #1a1206; }
+  .round-banner-wheel-icon {
+    width: 0.95em;
+    height: 0.95em;
+    vertical-align: -0.15em;
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
+  }
   .mute-btn {
     width: auto;
     background: transparent;
@@ -569,6 +575,62 @@
     background: radial-gradient(circle at 50% 18%, rgba(240, 166, 58, 0.24), var(--card) 72%);
   }
   #roundIntroCard[data-theme="dailydouble"] h2 { color: var(--accent); }
+
+  /* Daily Double spotlight, ported from the single-device build: a swinging
+     light beam sweeping in from an angle plus a few drifting dust motes,
+     with a soft vignette darkening the card's edges so the beam reads as
+     the only light source. */
+  #roundIntroCard[data-theme="dailydouble"]::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 60% 55% at 50% 42%, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0) 35%, rgba(6, 7, 10, 0.5) 78%, rgba(6, 7, 10, 0.85) 100%);
+    pointer-events: none;
+  }
+  .spotlight-field {
+    display: none;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  #roundIntroCard[data-theme="dailydouble"] .spotlight-field { display: block; }
+  .spot-beam {
+    position: absolute;
+    top: -35%;
+    left: 50%;
+    width: 46%;
+    height: 150%;
+    background: linear-gradient(180deg, rgba(255, 230, 160, 0.5) 0%, rgba(233, 181, 77, 0.24) 52%, rgba(233, 181, 77, 0) 100%);
+    clip-path: polygon(46% 0%, 54% 0%, 100% 100%, 0% 100%);
+    transform-origin: top center;
+    transform: translateX(-50%) rotate(-9deg);
+    mix-blend-mode: screen;
+    animation: spotSwing 2.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes spotSwing {
+    0%   { opacity: 0;   transform: translateX(-50%) rotate(-26deg); }
+    55%  { opacity: 1;   transform: translateX(-50%) rotate(7deg); }
+    100% { opacity: 0.9; transform: translateX(-50%) rotate(-2deg); }
+  }
+  .spot-dust {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgba(255, 236, 190, 0.85);
+    box-shadow: 0 0 6px 1px rgba(255, 226, 148, 0.7);
+    opacity: 0;
+    animation: dustDrift 2.6s ease-out both;
+  }
+  .dust-1 { top: 22%; left: 46%; animation-delay: 0.5s; }
+  .dust-2 { top: 34%; left: 56%; animation-delay: 0.9s; }
+  .dust-3 { top: 16%; left: 51%; animation-delay: 1.2s; }
+  @keyframes dustDrift {
+    0%   { opacity: 0; transform: translateY(0); }
+    20%  { opacity: 0.9; }
+    100% { opacity: 0; transform: translateY(60px); }
+  }
   #roundIntroCard[data-theme="results"] {
     border-color: var(--accent);
     background: radial-gradient(circle at 50% 24%, rgba(255, 196, 92, 0.16), #0c0a08 78%);
@@ -656,6 +718,78 @@
   .rollcall-ready { color: var(--good); font-weight: 700; font-size: 0.82rem; }
   .rollcall-waiting { color: var(--muted); font-size: 0.82rem; }
 
+  /* ---- Roll call fanfare (post-ready "Let's play!" moment), ported from
+     the single-device build ---- */
+  .rollcall-stage {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 1.6rem;
+    flex-wrap: wrap;
+  }
+  .rollcall-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    opacity: 0;
+    transform: translateY(14px) scale(0.6);
+    min-width: 4.6rem;
+  }
+  .rollcall-slot.revealed {
+    animation: rollcallPop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  @keyframes rollcallPop {
+    0% { opacity: 0; transform: translateY(14px) scale(0.5); }
+    60% { opacity: 1; transform: translateY(-4px) scale(1.1); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .rollcall-avatar {
+    width: 4.2rem;
+    height: 4.2rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    border: 3px solid var(--accent);
+    box-shadow: 0 0 0 6px rgba(240, 166, 58, 0.16);
+  }
+  .rollcall-name {
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: var(--fg);
+    max-width: 6.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rollcall-you-tag {
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .rollcall-title {
+    opacity: 0;
+    transform: scale(0.7);
+    margin-top: 1.6rem;
+  }
+  .rollcall-title.show {
+    animation: rollcallTitlePop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .rollcall-title h1 {
+    margin: 0;
+    font-size: 2.1rem;
+    color: var(--accent);
+    text-shadow: 0 0 26px rgba(240, 166, 58, 0.5);
+  }
+  @keyframes rollcallTitlePop {
+    0% { opacity: 0; transform: scale(0.6); }
+    60% { opacity: 1; transform: scale(1.12); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+
   /* ---- Correct-answer streak badge ----
      Grows via `transform: scale()` (driven by the --grow-scale custom
      property) rather than font-size, so the compounding growth never
@@ -718,12 +852,6 @@
   <h1>Trivia Night &mdash; Multiplayer Test</h1>
   <p class="sub">Own server, own protocol. Proves questions/answers/scoring sync live across devices.</p>
 
-  <div class="card">
-    <div class="status-line"><span class="dot" id="connDot"></span><span id="connStatus">Connecting&hellip;</span></div>
-    <div class="status-line"><span class="dot" id="actionDot"></span><span id="actionStatus">&nbsp;</span></div>
-    <button class="mute-btn" id="muteBtn" type="button">🔊 Sound on</button>
-  </div>
-
   <div class="card" id="chooseCard">
     <h2>Set yourself up</h2>
 
@@ -735,6 +863,12 @@
     <div class="setup-group">
       <p class="setup-label">Pick your avatar</p>
       <div class="avatar-picker" id="avatarPicker"></div>
+    </div>
+
+    <div class="setup-group">
+      <p class="setup-label">Categories</p>
+      <div class="chip-row" id="categoryChips"></div>
+      <p class="setup-note">Tap to leave out a category this round — at least one has to stay selected.</p>
     </div>
 
     <div class="setup-group">
@@ -763,7 +897,7 @@
       <p class="setup-note" id="modeNote" hidden>Real shared-team scoring is coming soon &mdash; for now, Team Huddle plays exactly like Individual.</p>
     </div>
 
-    <p class="setup-note">Session length, scoring, and play mode are set by whoever hosts &mdash; joining a room uses whatever the host already picked.</p>
+    <p class="setup-note">Categories, session length, scoring, and play mode are set by whoever hosts &mdash; joining a room uses whatever the host already picked.</p>
 
     <div class="row">
       <button id="hostBtn" disabled>Host a new game</button>
@@ -791,6 +925,13 @@
     <p class="sub" style="margin-top:-4px;">Everyone presses ready before Switchagories begins.</p>
     <ul class="players" id="rollcallList"><li class="empty">Nobody yet.</li></ul>
     <button id="readyBtn" style="margin-top:14px;">I&rsquo;m Ready</button>
+  </div>
+
+  <div class="card" id="rollcallFanfareCard" style="display:none; text-align:center;">
+    <div class="rollcall-stage" id="rollcallStage"></div>
+    <div class="rollcall-title" id="rollcallTitle" hidden>
+      <h1>Let&rsquo;s play!</h1>
+    </div>
   </div>
 
   <div class="card" id="wheelCard" style="display:none; text-align:center;">
@@ -834,6 +975,12 @@
       <div class="bolt bolt-4"><svg viewBox="0 0 24 48"><polygon points="14,0 3,26 11,26 7,48 21,18 12,18" fill="#FFF6D8"/></svg></div>
       <div class="bolt bolt-5"><svg viewBox="0 0 24 48"><polygon points="14,0 3,26 11,26 7,48 21,18 12,18" fill="#FFF6D8"/></svg></div>
       <div class="bolt bolt-6"><svg viewBox="0 0 24 48"><polygon points="14,0 3,26 11,26 7,48 21,18 12,18" fill="#FFF6D8"/></svg></div>
+    </div>
+    <div class="spotlight-field" aria-hidden="true">
+      <div class="spot-beam"></div>
+      <div class="spot-dust dust-1"></div>
+      <div class="spot-dust dust-2"></div>
+      <div class="spot-dust dust-3"></div>
     </div>
     <div class="ri-icon" id="roundIntroIcon"></div>
     <div class="ri-wheel-scene" aria-hidden="true">
@@ -939,6 +1086,15 @@
 
   <canvas id="confettiCanvas" aria-hidden="true"></canvas>
 
+  <!-- Connection/sound status: kept at the very bottom of the page (instead
+       of above the game cards) so it doesn't push the active screen — and
+       on phones, the scoreboard — down below the fold. -->
+  <div class="card" id="statusCard">
+    <div class="status-line"><span class="dot" id="connDot"></span><span id="connStatus">Connecting&hellip;</span></div>
+    <div class="status-line"><span class="dot" id="actionDot"></span><span id="actionStatus">&nbsp;</span></div>
+    <button class="mute-btn" id="muteBtn" type="button">🔊 Sound on</button>
+  </div>
+
 <script>
 (function () {
   const connDot = document.getElementById('connDot');
@@ -953,6 +1109,7 @@
   const playerList = document.getElementById('playerList');
   const nameInput = document.getElementById('nameInput');
   const avatarPickerEl = document.getElementById('avatarPicker');
+  const categoryChipsEl = document.getElementById('categoryChips');
   const modeNote = document.getElementById('modeNote');
   const hostBtn = document.getElementById('hostBtn');
   const joinShowBtn = document.getElementById('joinShowBtn');
@@ -966,6 +1123,10 @@
   const rollcallCard = document.getElementById('rollcallCard');
   const rollcallList = document.getElementById('rollcallList');
   const readyBtn = document.getElementById('readyBtn');
+
+  const rollcallFanfareCard = document.getElementById('rollcallFanfareCard');
+  const rollcallStage = document.getElementById('rollcallStage');
+  const rollcallTitle = document.getElementById('rollcallTitle');
 
   const wheelCard = document.getElementById('wheelCard');
   const wheelDisc = document.getElementById('wheelDisc');
@@ -1044,7 +1205,7 @@
     actionStatus.textContent = text || ' ';
   }
   function showOnly(card) {
-    [chooseCard, roomCard, rollcallCard, wheelCard, categoryAnnounceCard, roundIntroCard, questionCard, revealCard, ddWagerCard, ddQuestionCard, ddRevealCard, endedCard].forEach((c) => {
+    [chooseCard, roomCard, rollcallCard, rollcallFanfareCard, wheelCard, categoryAnnounceCard, roundIntroCard, questionCard, revealCard, ddWagerCard, ddQuestionCard, ddRevealCard, endedCard].forEach((c) => {
       c.style.display = c === card ? 'block' : 'none';
     });
   }
@@ -1076,6 +1237,16 @@
     };
     const thunder = new Audio('/audio/thunder.mp3');
     thunder.volume = 0.5;
+    // Roll-call fanfare one-shots — real recorded audio extracted from the
+    // original single-device build (a ship's bell per player reveal, then a
+    // trumpet fanfare layered with a crowd cheer for the "Let's play!"
+    // title), not synthesized like the tones above.
+    const shipBell = new Audio('/audio/ship-bell.mp3');
+    shipBell.volume = 0.85;
+    const rollcallFanfareHorn = new Audio('/audio/fanfare.mp3');
+    rollcallFanfareHorn.volume = 0.6;
+    const rollcallCheer = new Audio('/audio/rollcall-cheer.mp3');
+    rollcallCheer.volume = 0.35;
 
     function applyMute() {
       Object.values(loops).forEach((l) => { l.el.volume = muted ? 0 : l.vol; });
@@ -1198,6 +1369,17 @@
       playThunder() {
         if (muted) return;
         try { thunder.currentTime = 0; thunder.play().catch(() => {}); } catch (e) {}
+      },
+      playShipBell() {
+        if (muted) return;
+        try { shipBell.currentTime = 0; shipBell.play().catch(() => {}); } catch (e) {}
+      },
+      // The "Let's play!" title sting — fanfare and crowd cheer layered
+      // together, matching the original's dual-buffer playback.
+      playRollCallFinale() {
+        if (muted) return;
+        try { rollcallFanfareHorn.currentTime = 0; rollcallFanfareHorn.play().catch(() => {}); } catch (e) {}
+        try { rollcallCheer.currentTime = 0; rollcallCheer.play().catch(() => {}); } catch (e) {}
       },
       // Synthesized crowd cheer for the final results podium, ported from
       // the single-device build: a swelling filtered-noise "roar" bed,
@@ -1442,11 +1624,25 @@
     return (categoryIcon(cat) + ' ' + (cat || '')).trim();
   }
 
+  // The Switchagories banner icon is a tiny copy of the game's actual
+  // 6-wedge color wheel (same wedge-c1..c6 classes as the real wheel, so
+  // the colors always match it) rather than a generic 🎡 ferris-wheel
+  // emoji, which read as the wrong kind of "wheel" entirely.
+  const ROUND_BANNER_WHEEL_SVG = '<svg class="round-banner-wheel-icon" viewBox="0 0 200 200" aria-hidden="true">'
+    + '<path class="wheel-wedge wedge-c1" d="M100,100 L100,4 A96,96 0 0,1 183.14,52 Z"></path>'
+    + '<path class="wheel-wedge wedge-c2" d="M100,100 L183.14,52 A96,96 0 0,1 183.14,148 Z"></path>'
+    + '<path class="wheel-wedge wedge-c3" d="M100,100 L183.14,148 A96,96 0 0,1 100,196 Z"></path>'
+    + '<path class="wheel-wedge wedge-c4" d="M100,100 L100,196 A96,96 0 0,1 16.86,148 Z"></path>'
+    + '<path class="wheel-wedge wedge-c5" d="M100,100 L16.86,148 A96,96 0 0,1 16.86,52 Z"></path>'
+    + '<path class="wheel-wedge wedge-c6" d="M100,100 L16.86,52 A96,96 0 0,1 100,4 Z"></path>'
+    + '<circle class="wheel-hub" cx="100" cy="100" r="14"></circle>'
+    + '</svg>';
+
   // Full-width "which section of the game are we in" banner shown across
   // the top of every question/answer card — 'main' (Switchagories),
   // 'lightning', or 'dd' (Daily Double).
   const ROUND_BANNERS = {
-    main: { icon: '🎡', label: 'SWITCHAGORIES', cls: 'round-banner-main' },
+    main: { iconHtml: ROUND_BANNER_WHEEL_SVG, label: 'SWITCHAGORIES', cls: 'round-banner-main' },
     lightning: { icon: '⚡', label: 'LIGHTNING ROUND', cls: 'round-banner-lightning' },
     dd: { icon: '💰', label: 'DAILY DOUBLE', cls: 'round-banner-dd' },
   };
@@ -1454,7 +1650,7 @@
     if (!el) return;
     const info = ROUND_BANNERS[kind] || ROUND_BANNERS.main;
     el.className = 'round-banner ' + info.cls;
-    el.textContent = info.icon + ' ' + info.label;
+    el.innerHTML = (info.iconHtml || info.icon) + ' ' + info.label;
   }
 
   // Spin animation only — always lands on the real category the server told
@@ -1581,7 +1777,13 @@
   // Setup-screen choices, ported from the single-device build. length/
   // scoring/mode only matter when hosting; joiners inherit whatever the
   // host already picked.
-  const mySetup = { avatarIndex: 0, length: 'short', scoring: 'speed', mode: 'individual' };
+  const mySetup = {
+    avatarIndex: 0,
+    length: 'short',
+    scoring: 'speed',
+    mode: 'individual',
+    categories: CATEGORY_WHEEL.map((w) => w.cat),
+  };
 
   function avatarHtml(avatar) {
     if (!avatar) return '';
@@ -1597,7 +1799,13 @@
     const length = LENGTH_LABELS[settings.length] || settings.length;
     const scoring = SCORING_LABELS[settings.scoring] || settings.scoring;
     const mode = MODE_LABELS[settings.mode] || settings.mode;
-    return length + ' &middot; ' + scoring + ' &middot; ' + mode;
+    let summary = length + ' &middot; ' + scoring + ' &middot; ' + mode;
+    const totalCats = CATEGORY_WHEEL.length;
+    const chosenCats = (settings.categories || []).length || totalCats;
+    if (chosenCats < totalCats) {
+      summary += ' &middot; ' + chosenCats + '/' + totalCats + ' categories';
+    }
+    return summary;
   }
 
   (function setupAvatarPicker() {
@@ -1615,6 +1823,31 @@
           o.classList.toggle('selected', isSel);
           o.setAttribute('aria-pressed', String(isSel));
         });
+      });
+    });
+  })();
+
+  // Category picker: unlike the length/scoring/mode chip rows, categories
+  // are a multi-select — every category starts selected, and tapping one
+  // toggles it independently, with a floor of one category always staying
+  // on (the click is simply ignored if it would deselect the last one).
+  (function setupCategoryPicker() {
+    if (!categoryChipsEl) return;
+    categoryChipsEl.innerHTML = CATEGORY_WHEEL.map((w) =>
+      '<button type="button" class="chip selected" data-value="' + w.cat + '">' + w.icon + ' ' + w.cat + '</button>'
+    ).join('');
+    Array.from(categoryChipsEl.querySelectorAll('.chip')).forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const cat = chip.getAttribute('data-value');
+        const isSelected = chip.classList.contains('selected');
+        if (isSelected && mySetup.categories.length <= 1) return; // keep at least one
+        if (isSelected) {
+          mySetup.categories = mySetup.categories.filter((c) => c !== cat);
+          chip.classList.remove('selected');
+        } else {
+          mySetup.categories.push(cat);
+          chip.classList.add('selected');
+        }
       });
     });
   })();
@@ -1697,6 +1930,11 @@
       // ticking on the previous screen — clear it here so it's never left
       // running (or displayed) behind a screen the player has moved past.
       clearInterval(holdCountdownInterval);
+      // Same idea for the roll-call fanfare's own staggered bell/title
+      // timers — if something else (a leave, an early reconnect) moves us
+      // off that screen mid-sequence, don't let a bell fire on a screen
+      // nobody's looking at.
+      clearRollcallFanfareTimers();
 
       if (msg.type === 'room') {
         myPlayerId = msg.playerId;
@@ -1769,6 +2007,12 @@
         return;
       }
 
+      if (msg.type === 'rollcallFanfare') {
+        showOnly(rollcallFanfareCard);
+        renderRollcallFanfare(msg.players, msg.fanfareMs);
+        return;
+      }
+
       if (msg.type === 'wheel') {
         showOnly(wheelCard);
         spinCategoryWheel(msg.cat);
@@ -1794,6 +2038,15 @@
           Sound.playThunder();
         } else if (msg.title === 'SWITCHAGORIES') {
           Sound.stopIntro();
+          Sound.stopLightning();
+          Sound.startSwitchagories();
+        } else if (msg.title === 'DAILY DOUBLE') {
+          // Daily Double previously had no background bed of its own — dead
+          // silence from here through every DD screen except the heartbeat.
+          // Bring the Switchagories bed back as a general "still playing"
+          // music bed so there's no silent gap; it gets stopped again right
+          // before the results drum roll for that moment's own hush-then-
+          // crash effect.
           Sound.stopLightning();
           Sound.startSwitchagories();
         } else {
@@ -1943,6 +2196,61 @@
     const me = players.find((p) => p.id === myPlayerId);
     readyBtn.disabled = !!(me && me.ready);
     readyBtn.textContent = (me && me.ready) ? 'Waiting for others…' : 'I’m Ready';
+  }
+
+  // --- Roll call fanfare ("Let's play!" moment once everyone's ready) ---
+  // Ported from the single-device build's showRollCall(): each player pops
+  // in one at a time with a ship's-bell chime, then a title card lands with
+  // a fanfare + crowd-cheer sting. The single-device build played this
+  // *before* its ready check; here the real multiplayer ready check already
+  // happened, so this plays right after, timed to land just before the
+  // server actually starts the round (fanfareMs, passed by the server).
+  let rollcallFanfareTimers = [];
+  function clearRollcallFanfareTimers() {
+    rollcallFanfareTimers.forEach((t) => clearTimeout(t));
+    rollcallFanfareTimers = [];
+  }
+  function renderRollcallFanfare(players, fanfareMs) {
+    clearRollcallFanfareTimers();
+    if (!rollcallStage || !rollcallTitle) return;
+    rollcallTitle.hidden = true;
+    rollcallTitle.classList.remove('show');
+    const list = players || [];
+    rollcallStage.innerHTML = list.map((p, i) => {
+      const bg = p.avatar ? p.avatar.bg : 1;
+      const emoji = p.avatar ? p.avatar.emoji : '❓';
+      const youTag = p.id === myPlayerId ? '<span class="rollcall-you-tag">You</span>' : '';
+      return '<div class="rollcall-slot" id="rollcallSlot' + i + '">' +
+        '<span class="rollcall-avatar avatar-bg-' + bg + '" aria-hidden="true">' + emoji + '</span>' +
+        '<span class="rollcall-name">' + escapeHtml(p.name) + '</span>' + youTag +
+        '</div>';
+    }).join('');
+
+    // Spread the per-player reveals across whatever time we have, always
+    // landing the title with ~700ms to spare before the round actually
+    // starts (fanfareMs is server-authoritative either way — on a normal
+    // run it's the full sequence length; on a mid-sequence reconnect it's
+    // just whatever time is left, and this still lands sensibly).
+    const total = Math.max(300, fanfareMs || 1400);
+    const titleDelay = Math.max(0, total - 700);
+    const perSlot = list.length > 1 ? titleDelay / list.length : 0;
+
+    list.forEach((p, i) => {
+      const t = setTimeout(() => {
+        const slot = document.getElementById('rollcallSlot' + i);
+        if (slot) slot.classList.add('revealed');
+        Sound.playShipBell();
+      }, Math.round(i * perSlot));
+      rollcallFanfareTimers.push(t);
+    });
+
+    const titleTimer = setTimeout(() => {
+      rollcallTitle.hidden = false;
+      void rollcallTitle.offsetWidth;
+      rollcallTitle.classList.add('show');
+      Sound.playRollCallFinale();
+    }, titleDelay);
+    rollcallFanfareTimers.push(titleTimer);
   }
 
   function escapeHtml(s) {
@@ -2402,7 +2710,7 @@
       type: 'host',
       name: nameOrFallback(),
       avatarIndex: mySetup.avatarIndex,
-      settings: { length: mySetup.length, scoring: mySetup.scoring, mode: mySetup.mode },
+      settings: { length: mySetup.length, scoring: mySetup.scoring, mode: mySetup.mode, categories: mySetup.categories },
     }));
     setTimeout(() => { hostBtn.disabled = false; }, 1500);
   });

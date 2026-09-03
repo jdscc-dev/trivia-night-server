@@ -274,16 +274,48 @@ const LIGHTNING_ITEMS = [
   { s: 'Sharks existed before trees.', truth: true },
   { s: 'Mount Everest is the tallest mountain on Earth measured from base to peak.', truth: false },
   { s: 'Honey never spoils.', truth: true },
+  { s: 'A bolt of lightning is hotter than the surface of the sun.', truth: true },
+  { s: 'Goldfish have a memory span of only a few seconds.', truth: false },
+  { s: 'Bananas are classified as berries, but strawberries are not.', truth: true },
+  { s: 'Napoleon Bonaparte was unusually short for his era.', truth: false },
+  { s: 'Humans can distinguish more than a trillion different smells.', truth: true },
+  { s: 'People only use ten percent of their brains.', truth: false },
+  { s: 'Wombat droppings are cube-shaped.', truth: true },
+  { s: 'Glass is a slow-moving liquid, which is why old windows are thicker at the bottom.', truth: false },
+  { s: 'There are more possible chess games than atoms in the observable universe.', truth: true },
+  { s: 'Lightning never strikes the same place twice.', truth: false },
+  { s: 'The Eiffel Tower grows several centimeters taller in summer heat.', truth: true },
+  { s: 'Chameleons change color mainly to camouflage with their surroundings.', truth: false },
+  { s: 'Venus is the hottest planet in the solar system.', truth: true },
+  { s: 'Albert Einstein failed math as a student.', truth: false },
+  { s: 'A day on Venus lasts longer than a Venusian year.', truth: true },
+  { s: 'The Coriolis effect decides which way water swirls down your bathtub drain.', truth: false },
+  { s: 'Cleopatra lived closer in time to the moon landing than to the building of the Great Pyramid.', truth: true },
+  { s: 'Vikings wore horned helmets into battle.', truth: false },
+  { s: 'Oxford University predates the founding of the Aztec Empire.', truth: true },
+  { s: 'Camels store water in the humps on their backs.', truth: false },
+  { s: 'Butterflies taste their food using sensors on their feet.', truth: true },
+  { s: 'The Sahara is the largest desert in the world.', truth: false },
+  { s: 'The shortest war on record lasted under an hour.', truth: true },
+  { s: 'Diamonds form from highly compressed coal.', truth: false },
+  { s: 'Polar bears have black skin beneath their white fur.', truth: true },
+  { s: 'It takes seven years to digest swallowed chewing gum.', truth: false },
+  { s: 'Saturn is less dense than water.', truth: true },
+  { s: 'Each region of the tongue detects only one specific taste.', truth: false },
+  { s: 'The man who invented the Pringles can is buried in one.', truth: true },
+  { s: 'Ostriches bury their heads in the sand when frightened.', truth: false },
+  { s: 'Almonds are close botanical relatives of peaches.', truth: true },
+  { s: 'Frankenstein is the name of the monster in Mary Shelley\'s novel.', truth: false },
 ];
 
-// Daily Double, ported from the single-device build's DAILY_DOUBLES set.
-// Unlike the original (one spotlighted contestant), every player plays their
-// own Daily Double at the same time: each wagers off their own score, then
-// answers — win the wager or lose it, independent of everyone else.
-const DAILY_DOUBLE_ITEMS = [
-  { q: 'This artist painted the ceiling of the Sistine Chapel.', choices: ['Leonardo da Vinci', 'Michelangelo', 'Raphael', 'Donatello'], correct: 1 },
-  { q: 'Which planet has the most known moons in our solar system?', choices: ['Jupiter', 'Saturn', 'Uranus', 'Neptune'], correct: 1 },
-];
+// Daily Double questions are no longer their own tiny fixed pool — they're
+// drawn from MAIN_QUESTIONS at game-start time (see pickDailyDoubleSet),
+// same as every other multiple-choice question in the game, so they get
+// the benefit of the same 240-question pool instead of repeating after two
+// games. Unlike the original single-device build (one spotlighted
+// contestant), every player plays their own Daily Double at the same time:
+// each wagers off their own score, then answers — win the wager or lose
+// it, independent of everyone else.
 
 // Avatars, ported from the single-device build's setup screen. bg 1-6 cycles
 // through the same tile/accent/good colors used for the wheel tiles.
@@ -327,15 +359,23 @@ function lengthConfigFor(length) {
 
 const VALID_SCORING = ['correct', 'speed', 'speed_difficulty'];
 const VALID_MODE = ['individual', 'team'];
+const VALID_CATEGORIES = CATEGORY_WHEEL.map((w) => w.cat);
 
 function normalizeSettings(raw) {
   const s = raw || {};
+  // Host-selected Switchagories/Daily Double categories. Falls back to all
+  // six whenever the list is missing, empty, or entirely invalid — a host
+  // can never accidentally end up with zero categories to draw from.
+  const requestedCats = Array.isArray(s.categories)
+    ? s.categories.filter((c) => VALID_CATEGORIES.includes(c))
+    : [];
   return {
     length: LENGTH_CONFIG[s.length] ? s.length : 'short',
     scoring: VALID_SCORING.includes(s.scoring) ? s.scoring : 'speed',
     // Team Huddle is reinstated as a selectable option but not yet wired to
     // real shared-team scoring — it plays identically to individual for now.
     mode: VALID_MODE.includes(s.mode) ? s.mode : 'individual',
+    categories: requestedCats.length ? requestedCats : VALID_CATEGORIES.slice(),
   };
 }
 
@@ -371,6 +411,22 @@ const WHEEL_TOTAL_MS = WHEEL_SPIN_MS + WHEEL_LAND_PAUSE_MS + WHEEL_TRANSITION_TA
 // on its own screen after the wheel lands, before the question appears.
 const CATEGORY_ANNOUNCE_MS = 1800;
 
+// Player Roll Call fanfare, ported from the single-device build: once every
+// player has pressed ready, each player's avatar pops in one at a time with
+// a ship's-bell chime, then a "Let's Play!" title lands with a fanfare +
+// crowd-cheer sting before the round actually begins. The single-device
+// build played this BEFORE its (partly simulated) ready check; in real
+// multiplayer the meaningful "everyone's actually here" moment is once
+// every real player has pressed ready, so that's when this plays instead.
+// Duration scales with player count so the last avatar's bell always lands
+// before the title, whether it's a 2-player room or an 8-player one.
+const ROLLCALL_FANFARE_START_DELAY_MS = 300;
+const ROLLCALL_FANFARE_STAGGER_MS = 380;
+const ROLLCALL_FANFARE_TITLE_HOLD_MS = 1400;
+function rollcallFanfareMs(playerCount) {
+  return ROLLCALL_FANFARE_START_DELAY_MS + Math.max(0, playerCount - 1) * ROLLCALL_FANFARE_STAGGER_MS + ROLLCALL_FANFARE_TITLE_HOLD_MS;
+}
+
 // How long the one-time "LIGHTNING ROUND" title card stays up before the
 // first true/false statement appears.
 const ROUND_INTRO_MS = 2600;
@@ -380,9 +436,12 @@ const ROUND_INTRO_MS = 2600;
 const RESULTS_FANFARE_MS = 4200;
 
 // How long a reveal screen stays up before the game auto-advances on its
-// own — no host click required. Matches the single-device build's 3s
-// countdown for both the main/Lightning reveal and the Daily Double reveal.
-const REVEAL_HOLD_MS = 3000;
+// own — no host click required. Switchagories (main round) got bumped to
+// 6s so there's more time to read the correct answer and the scoreboard
+// pop before the wheel spins again; Lightning stays at the original 3s to
+// keep that round feeling fast-paced, and so does Daily Double's reveal.
+const REVEAL_HOLD_MS_MAIN = 6000;
+const REVEAL_HOLD_MS_LIGHTNING = 3000;
 const DD_REVEAL_HOLD_MS = 3000;
 
 function shuffle(arr) {
@@ -441,6 +500,17 @@ function pickMainSet(pool, count) {
   return shuffle(picked);
 }
 
+// Draw `count` Daily Double questions from the same pool as the main round
+// (filtered to the host's selected categories), excluding whatever was
+// already handed to this game's mainSet so nobody sees the same question
+// twice in one sitting. Category balance doesn't matter here — it's only
+// ever 1 or 2 questions — so a plain random draw is enough.
+function pickDailyDoubleSet(pool, mainSet, count) {
+  const usedQuestions = new Set(mainSet.map((q) => q.q));
+  const remaining = pool.filter((q) => !usedQuestions.has(q.q));
+  return shuffle(remaining).slice(0, count);
+}
+
 // Normalize the true/false items into the same {cat, q, choices, correct}
 // shape the main round already uses, so every downstream function (wheel
 // excluded) can treat both rounds identically.
@@ -469,7 +539,7 @@ function wagerOptions(score) {
 // In-memory room state.
 // code -> {
 //   players: Map(playerId -> { id, name, isHost, ws, score }),
-//   phase: 'lobby' | 'rollcall' | 'wheel' | 'categoryAnnounce' | 'question' | 'reveal'
+//   phase: 'lobby' | 'rollcall' | 'rollcallFanfare' | 'wheel' | 'categoryAnnounce' | 'question' | 'reveal'
 //          | 'roundIntro' | 'ddWager' | 'ddRoundReveal' | 'results' | 'ended',
 //   round: 'main' | 'lightning' | 'dailyDouble'  (which set questionIndex indexes into)
 //   mainSet: [question, ...]  (this room's shuffled order, set at startGame)
@@ -598,7 +668,15 @@ function maybeAdvanceRollCall(code) {
   if (!connected.length) return;
   const allReady = connected.every((p) => room.readyPlayers.has(p.id));
   if (!allReady) return;
-  startSwitchagoriesIntro(code);
+  // Everyone's actually here and ready — this is the "let's play!" moment.
+  // Hold in a dedicated phase for the roll-call fanfare (per-player bell
+  // reveal + title card) before the round itself begins.
+  room.phase = 'rollcallFanfare';
+  const fanfareMs = rollcallFanfareMs(connected.length);
+  room.rollcallFanfareEndsAt = Date.now() + fanfareMs;
+  broadcast(code, { type: 'rollcallFanfare', players: roomSnapshot(room), fanfareMs });
+  clearTimeout(room.timer);
+  room.timer = setTimeout(() => startSwitchagoriesIntro(code), fanfareMs);
 }
 
 // One-time title card shown before the very first Switchagories wheel spin
@@ -689,6 +767,7 @@ function revealAnswer(code) {
   const holdLabel = room.round === 'main'
     ? (isLastInRound ? 'Lightning Round starting' : 'Next question')
     : (isLastInRound ? 'Daily Double starting' : 'Next question');
+  const holdMs = room.round === 'main' ? REVEAL_HOLD_MS_MAIN : REVEAL_HOLD_MS_LIGHTNING;
 
   broadcast(code, {
     type: 'reveal',
@@ -698,10 +777,10 @@ function revealAnswer(code) {
     answers: answerMap,
     players: roomSnapshot(room),
     holdLabel,
-    holdMs: REVEAL_HOLD_MS,
+    holdMs,
   });
 
-  room.timer = setTimeout(() => advanceAfterReveal(code), REVEAL_HOLD_MS);
+  room.timer = setTimeout(() => advanceAfterReveal(code), holdMs);
 }
 
 // Auto-advances past a main/lightning reveal — no host click needed. Called
@@ -933,6 +1012,14 @@ wss.on('connection', (ws) => {
       if (room.phase === 'rollcall') {
         send(ws, { type: 'rollcall', players: roomSnapshot(room) });
       }
+      // Reconnecting mid-fanfare: send whatever time is actually left so the
+      // bell/title sequence doesn't restart from the top (or, if it already
+      // finished server-side, resolves to a near-zero hold and the client's
+      // own phase message a moment later carries it straight into the round).
+      if (room.phase === 'rollcallFanfare') {
+        const remaining = Math.max(300, (room.rollcallFanfareEndsAt || Date.now()) - Date.now());
+        send(ws, { type: 'rollcallFanfare', players: roomSnapshot(room), fanfareMs: remaining });
+      }
       return;
     }
 
@@ -943,9 +1030,12 @@ wss.on('connection', (ws) => {
       if (!player || !player.isHost || room.phase !== 'lobby') return;
       room.round = 'main';
       const cfg = lengthConfigFor(room.settings.length);
-      room.mainSet = pickMainSet(MAIN_QUESTIONS, cfg.numMain).map(shuffleChoices);
+      // Both Switchagories and Daily Double draw from whichever categories
+      // the host left selected (normalizeSettings guarantees at least one).
+      const categoryPool = MAIN_QUESTIONS.filter((q) => room.settings.categories.includes(q.cat));
+      room.mainSet = pickMainSet(categoryPool, cfg.numMain).map(shuffleChoices);
       room.lightningSet = buildLightningSet().slice(0, cfg.numLightning).map(shuffleChoices);
-      room.dailyDoubleSet = shuffle(DAILY_DOUBLE_ITEMS).slice(0, cfg.numDD).map(shuffleChoices);
+      room.dailyDoubleSet = pickDailyDoubleSet(categoryPool, room.mainSet, cfg.numDD).map(shuffleChoices);
       startRollCall(myRoomCode);
       return;
     }
