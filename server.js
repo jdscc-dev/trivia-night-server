@@ -439,7 +439,11 @@ const WHEEL_TOTAL_MS = WHEEL_SPIN_MS + WHEEL_LAND_PAUSE_MS + WHEEL_TRANSITION_TA
 
 // How long the "Up next: CATEGORY" tile (with its photo background) stays up
 // on its own screen after the wheel lands, before the question appears.
-const CATEGORY_ANNOUNCE_MS = 1800;
+// Doubled from the original 1800ms — the pre-tile wheel pause
+// (WHEEL_TRANSITION_TAIL_MS) got cut in half in an earlier update, so this
+// fixed-length tile now follows much less buildup and was flashing by too
+// fast by comparison, even though this value itself hadn't changed.
+const CATEGORY_ANNOUNCE_MS = 3600;
 
 // Player Roll Call fanfare, ported from the single-device build: once every
 // player has pressed ready, each player's avatar pops in one at a time with
