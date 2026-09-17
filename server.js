@@ -9,6 +9,33 @@ app.use(express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+// --- Connection liveness (ping/pong heartbeat) ---------------------------
+// Without this, a "zombie" connection — a phone that got backgrounded, a
+// wifi-to-cellular handoff, a flaky connection that never sends a proper
+// close/FIN — can sit in room.players with player.ws still set forever.
+// Every "wait for everyone" gate (Daily Double answers, roll call ready-ups)
+// filters on player.ws being truthy to decide who still counts, so a zombie
+// connection that looks connected but will never send anything again could
+// make the whole table wait on someone who has effectively vanished, with
+// no way to tell the difference from "they're just still thinking." This
+// pings every open connection on an interval; anything that didn't answer
+// the previous ping gets forcibly terminated, which fires that socket's
+// normal 'close' handler below and lets the game correctly notice they're
+// gone and move on.
+const HEARTBEAT_INTERVAL_MS = 20000;
+function heartbeatPong() { this.isAlive = true; }
+const heartbeatTimer = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      ws.terminate();
+      return;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, HEARTBEAT_INTERVAL_MS);
+wss.on('close', () => clearInterval(heartbeatTimer));
+
 // --- Real Switchagories content, ported from the single-device build. ---
 // Order matters: it lines up with CATEGORY_WHEEL (and the wheel's 6 wedges)
 // on the client, wedge-c1..c6 in this same sequence.
@@ -451,6 +478,17 @@ const RESULTS_FANFARE_MS = 4200;
 const REVEAL_HOLD_MS_MAIN = 5000;
 const REVEAL_HOLD_MS_LIGHTNING = 3000;
 const DD_REVEAL_HOLD_MS = 3000;
+
+// Safety-net backstop for Daily Double: it's normally untimed (everyone
+// wagers and answers on their own clock), but that means one player who
+// never finishes — a dropped connection the heartbeat above hasn't caught
+// yet, a client-side hiccup, someone who just got distracted — can leave
+// the entire table stuck on "waiting for other players" with no way out
+// short of the host's End Game button abandoning the whole game. This
+// forces the reveal after a generous wait, treating anyone still not done
+// as simply not having answered (existing scoring already handles that
+// case cleanly — no wager change, shown as unanswered).
+const DD_ANSWER_TIMEOUT_MS = 60000;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -903,19 +941,32 @@ function startDailyDoubleItem(code, index) {
   for (const p of room.players.values()) {
     send(p.ws, { type: 'ddWager', index, total: room.dailyDoubleSet.length, options: wagerOptions(p.score) });
   }
+  // Safety net — see DD_ANSWER_TIMEOUT_MS above. Cleared and replaced the
+  // moment everyone actually finishes (revealDailyDouble below always does
+  // clearTimeout(room.timer) first), so this only ever fires if the table
+  // is genuinely still waiting on someone after a full minute.
+  room.timer = setTimeout(() => revealDailyDouble(code, { force: true }), DD_ANSWER_TIMEOUT_MS);
 }
 
 // Checks whether every currently-connected player has finished (wagered and
 // answered) the active Daily Double item, and reveals the shared results
 // once they have. Only connected players count, so someone who dropped
-// mid-round never blocks the rest of the table forever.
+// mid-round never blocks the rest of the table forever — and even a
+// connection the server hasn't yet noticed is dead gets caught by the
+// DD_ANSWER_TIMEOUT_MS backstop in startDailyDoubleItem above.
 function maybeRevealDailyDouble(code) {
+  revealDailyDouble(code, { force: false });
+}
+
+function revealDailyDouble(code, opts) {
   const room = rooms.get(code);
   if (!room || room.phase !== 'ddWager') return;
-  const connected = Array.from(room.players.values()).filter((p) => p.ws);
-  if (!connected.length) return;
-  const allDone = connected.every((p) => room.ddCompleted.has(p.id));
-  if (!allDone) return;
+  if (!opts || !opts.force) {
+    const connected = Array.from(room.players.values()).filter((p) => p.ws);
+    if (!connected.length) return;
+    const allDone = connected.every((p) => room.ddCompleted.has(p.id));
+    if (!allDone) return;
+  }
 
   clearTimeout(room.timer);
   room.phase = 'ddRoundReveal';
@@ -972,6 +1023,9 @@ function startResultsFanfare(code) {
 wss.on('connection', (ws) => {
   let myRoomCode = null;
   let myPlayerId = null;
+
+  ws.isAlive = true;
+  ws.on('pong', heartbeatPong);
 
   ws.on('message', (raw) => {
     let msg;
